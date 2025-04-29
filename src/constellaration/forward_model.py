@@ -6,9 +6,11 @@ from constellaration.geometry import (
     surface_rz_fourier,
     surface_utils,
 )
+from constellaration.mhd import geometry_utils
 from constellaration.mhd import (
-    geometry_utils,
-    ideal_mhd_parameters,
+    ideal_mhd_parameters as ideal_mhd_parameters_module,
+)
+from constellaration.mhd import (
     magnetics_utils,
     turbulent_transport,
     vmec,
@@ -73,12 +75,17 @@ class ConstellarationSettings(pydantic.BaseModel):
         )
 
 
-# TODO(mariap): pass default parameters for ideal_mhd_parameters and settings
 def forward_model(
     boundary: surface_rz_fourier.SurfaceRZFourier,
-    ideal_mhd_parameters: ideal_mhd_parameters.IdealMHDParameters,
-    settings: ConstellarationSettings,
+    ideal_mhd_parameters: ideal_mhd_parameters_module.IdealMHDParameters | None = None,
+    settings: ConstellarationSettings | None = None,
 ) -> tuple[ConstellarationMetrics, vmec.VmecppWOut]:
+    if ideal_mhd_parameters is None:
+        ideal_mhd_parameters = (
+            ideal_mhd_parameters_module.boundary_to_ideal_mhd_parameters(boundary)
+        )
+    if settings is None:
+        settings = ConstellarationSettings()
     vmec_settings = vmec_settings_module.create_vmec_settings_from_preset(
         boundary,
         settings=settings.vmec_preset_settings,

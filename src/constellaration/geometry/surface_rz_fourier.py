@@ -1,6 +1,7 @@
 import jaxtyping as jt
 import numpy as np
 import pydantic
+from constellaration.geometry import surface_utils
 from typing_extensions import Self
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
@@ -178,3 +179,297 @@ def get_largest_non_zero_modes(
 
     # Ensure at least one mode is retained
     return max(max_m, 0), max(max_n, 0)
+
+
+def evaluate_minor_radius(
+    surface: SurfaceRZFourier,
+    n_theta: int = 50,
+    n_phi: int = 51,
+) -> pydantic.NonNegativeFloat:
+    """Return the minor radius of the surface defined as the radius of the circle with
+    the same area as the average cross sectional area of the surface.
+
+    Args:
+        surface: The surface to compute the minor radius of.
+        n_theta: Number of quadrature points in the theta dimension of the surface,
+            used for the numerical integration.
+        n_phi: Number of quadrature points in the phi dimension of the surface,
+            used for the numerical integration.
+    """
+    return np.sqrt(
+        compute_mean_cross_sectional_area(surface=surface, n_theta=n_theta, n_phi=n_phi)
+        / np.pi
+    )
+
+
+def compute_mean_cross_sectional_area(
+    surface: SurfaceRZFourier,
+    n_theta: int = 50,
+    n_phi: int = 51,
+) -> pydantic.NonNegativeFloat:
+    """Compute the mean cross sectional area of the surface.
+
+    The mean cross sectional area is defined as the average of the cross sectional areas
+    of the surface along the toroidal direction.
+
+    The code is taken from Simsopt, please refer to the documentation here
+    https://simsopt.readthedocs.io/en/latest/simsopt.geo.html#simsopt.geo.surface.Surface.mean_cross_sectional_area
+
+    The code provides a numerical integration of the cross sectional area of the surface
+    and an average across the toroidal direction, which is general enough to not assume
+    that phi is the real toroidal angle.
+
+    Args:
+        surface: The surface to compute the mean cross sectional area of.
+        n_theta: Number of quadrature points in the theta dimension of the surface,
+            used for the numerical integration.
+        n_phi: Number of quadrature points in the phi dimension of the surface,
+            used for the numerical integration.
+    """
+    # n_theta - 1, n_phi - 1 is to make sure this calculation is equivalent to using
+    # Simsopt
+    theta_phi_grid = surface_utils.make_theta_phi_grid(
+        n_theta - 1, n_phi - 1, phi_upper_bound=2 * np.pi, include_endpoints=False
+    )
+    xyz = evaluate_points_xyz(surface, theta_phi_grid)
+    x2y2 = xyz[:, :, 0] ** 2 + xyz[:, :, 1] ** 2
+    dgamma1 = evaluate_dxyz_dphi(surface, theta_phi_grid) * 2 * np.pi
+    dgamma2 = evaluate_dxyz_dtheta(surface, theta_phi_grid) * 2 * np.pi
+
+    # compute the average cross sectional area
+    J = np.zeros((xyz.shape[0], xyz.shape[1], 2, 2))
+    J[:, :, 0, 0] = (
+        xyz[:, :, 0] * dgamma1[:, :, 1] - xyz[:, :, 1] * dgamma1[:, :, 0]
+    ) / x2y2
+    J[:, :, 0, 1] = (
+        xyz[:, :, 0] * dgamma2[:, :, 1] - xyz[:, :, 1] * dgamma2[:, :, 0]
+    ) / x2y2
+    J[:, :, 1, 0] = 0.0
+    J[:, :, 1, 1] = 1.0
+
+    detJ = np.linalg.det(J)
+    Jinv = np.linalg.inv(J)
+
+    dZ_dtheta = (
+        dgamma1[:, :, 2] * Jinv[:, :, 0, 1] + dgamma2[:, :, 2] * Jinv[:, :, 1, 1]
+    )
+    mean_cross_sectional_area = np.abs(np.mean(np.sqrt(x2y2) * dZ_dtheta * detJ)) / (
+        2 * np.pi
+    )
+    return mean_cross_sectional_area
+
+
+def evaluate_points_xyz(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims 3"]:
+    """Evaluate the X, Y, and Z coordinates of the surface at the given theta and phi
+    coordinates.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The X, Y, and Z coordinates of the surface at the given
+            theta and phi coordinates.
+        The last dimension indexes X, Y, and Z.
+    """
+    rz = evaluate_points_rz(surface, theta_phi)
+    phi = theta_phi[..., 1]
+    x = rz[..., 0] * np.cos(phi)
+    y = rz[..., 0] * np.sin(phi)
+    z = rz[..., 1]
+    return np.stack((x, y, z), axis=-1)
+
+
+def evaluate_points_rz(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[np.ndarray, "*dims 2"],
+) -> jt.Float[np.ndarray, "*dims 2"]:
+    """Evaluate the R and Z coordinates of the surface at the given theta and phi
+    coordinates.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The R and Z coordinates of the surface at the given theta and phi coordinates.
+        The last dimension indexes R and Z.
+    """
+    angle = _compute_angle(surface, theta_phi)
+    cos_angle = np.cos(angle)
+    sin_angle = np.sin(angle)
+    # r_cos is (n_poloidal_modes, n_toroidal_modes)
+    r = np.sum(surface.r_cos[np.newaxis, :, :] * cos_angle, axis=(-1, -2))
+    z = np.sum(surface.z_sin[np.newaxis, :, :] * sin_angle, axis=(-1, -2))
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        assert surface.z_cos is not None
+        r += np.sum(surface.r_sin[np.newaxis, :, :] * sin_angle, axis=(-1, -2))
+        z += np.sum(surface.z_cos[np.newaxis, :, :] * cos_angle, axis=(-1, -2))
+    return np.stack((r, z), axis=-1)
+
+
+def evaluate_dxyz_dphi(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims 3"]:
+    """Evaluate the derivatives of the X, Y, and Z coordinates of the surface with
+    respect to phi.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+            The grid is expected to be using the `indexing='ij'` ordering in the jargon
+            of `np.meshgrid`, which is also what `make_theta_phi_grid` produces.
+
+    Returns:
+        The derivatives of the X, Y, and Z coordinates of the surface with respect to
+            phi.
+        The last dimension indexes X, Y, and Z.
+    """
+    r = evaluate_points_rz(surface, theta_phi)[..., 0]
+    dr_dphi = _evaluate_dr_dphi(surface, theta_phi)
+    dz_dphi = _evaluate_dz_dphi(surface, theta_phi)
+    phi = theta_phi[..., 1]
+    dx_dphi = dr_dphi * np.cos(phi) - r * np.sin(phi)
+    dy_dphi = dr_dphi * np.sin(phi) + r * np.cos(phi)
+    dz_dphi = dz_dphi
+    return np.stack((dx_dphi, dy_dphi, dz_dphi), axis=-1)
+
+
+def evaluate_dxyz_dtheta(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims 3"]:
+    """Evaluate the derivatives of the X, Y, and Z coordinates of the surface with
+    respect to theta.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The derivatives of the X, Y, and Z coordinates of the surface with respect to
+            theta.
+        The last dimension indexes X, Y, and Z.
+    """
+    dr_dtheta = _evaluate_dr_dtheta(surface, theta_phi)
+    dz_dtheta = _evaluate_dz_dtheta(surface, theta_phi)
+    phi = theta_phi[..., 1]
+    dx_dtheta = dr_dtheta * np.cos(phi)
+    dy_dtheta = dr_dtheta * np.sin(phi)
+    dz_dtheta = dz_dtheta
+    return np.stack((dx_dtheta, dy_dtheta, dz_dtheta), axis=-1)
+
+
+def _compute_angle(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[np.ndarray, "*dims 2"],
+) -> jt.Float[np.ndarray, "*dims n_poloidal_modes n_toroidal_modes"]:
+    # angle is the argument of sin and cos in the Fourier series
+    # angle = m*theta - NFP*n*phi
+    angle: jt.Float[np.ndarray, "*dims n_poloidal_modes n_toroidal_modes"] = (
+        surface.poloidal_modes * theta_phi[..., 0][..., np.newaxis, np.newaxis]
+        - surface.n_field_periods
+        * surface.toroidal_modes
+        * theta_phi[..., 1][..., np.newaxis, np.newaxis]
+    )
+    return angle
+
+
+def _evaluate_dr_dphi(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims"]:
+    angle = _compute_angle(surface, theta_phi)
+    sin_angle = np.sin(angle)
+    # r_cos is (n_poloidal_modes, n_toroidal_modes)
+    dr_dphi = np.sum(
+        surface.r_cos[np.newaxis, :, :]
+        * surface.n_field_periods
+        * surface.toroidal_modes
+        * sin_angle,
+        axis=(-1, -2),
+    )
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        cos_angle = np.cos(angle)
+        dr_dphi += np.sum(
+            surface.r_sin[np.newaxis, :, :]
+            * surface.n_field_periods
+            * surface.toroidal_modes
+            * (-1)
+            * cos_angle,
+            axis=(-1, -2),
+        )
+    return dr_dphi
+
+
+def _evaluate_dz_dphi(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims"]:
+    angle = _compute_angle(surface, theta_phi)
+    cos_angle = np.cos(angle)
+    # z_sin is (n_poloidal_modes, n_toroidal_modes)
+    dz_dphi = np.sum(
+        surface.z_sin[np.newaxis, :, :]
+        * surface.n_field_periods
+        * surface.toroidal_modes
+        * (-1)
+        * cos_angle,
+        axis=(-1, -2),
+    )
+    if not surface.is_stellarator_symmetric:
+        assert surface.z_cos is not None
+        sin_angle = np.sin(angle)
+        dz_dphi += np.sum(
+            surface.z_cos[np.newaxis, :, :]
+            * surface.n_field_periods
+            * surface.toroidal_modes
+            * sin_angle,
+            axis=(-1, -2),
+        )
+    return dz_dphi
+
+
+def _evaluate_dr_dtheta(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims"]:
+    angle = _compute_angle(surface, theta_phi)
+    sin_angle = np.sin(angle)
+    # r_cos is (n_poloidal_modes, n_toroidal_modes)
+    dr_dtheta = np.sum(
+        surface.r_cos[np.newaxis, :, :] * surface.poloidal_modes * (-1) * sin_angle,
+        axis=(-1, -2),
+    )
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        cos_angle = np.cos(angle)
+        dr_dtheta += np.sum(
+            surface.r_sin[np.newaxis, :, :] * surface.poloidal_modes * cos_angle,
+            axis=(-1, -2),
+        )
+    return dr_dtheta
+
+
+def _evaluate_dz_dtheta(
+    surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
+) -> jt.Float[np.ndarray, "*dims"]:
+    angle = _compute_angle(surface, theta_phi)
+    cos_angle = np.cos(angle)
+    # z_sin is (n_poloidal_modes, n_toroidal_modes)
+    dz_dtheta = np.sum(
+        surface.z_sin[np.newaxis, :, :] * surface.poloidal_modes * cos_angle,
+        axis=(-1, -2),
+    )
+    if not surface.is_stellarator_symmetric:
+        assert surface.z_cos is not None
+        sin_angle = np.sin(angle)
+        dz_dtheta += np.sum(
+            surface.z_cos[np.newaxis, :, :] * surface.poloidal_modes * (-1) * sin_angle,
+            axis=(-1, -2),
+        )
+    return dz_dtheta
