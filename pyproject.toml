@@ -30,7 +30,7 @@ dependencies = [
   "pydantic",
   "scipy",
   "simsopt==1.8.1",
-  "vmecpp==0.2.1"
+  "vmecpp==0.4.1"
 ]
 
 [project.urls]

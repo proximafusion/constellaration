@@ -6,7 +6,6 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 import vmecpp
-import vmecpp.cpp.vmecpp.simsopt_compat as simsopt_compat_cpp
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import (
     flux_power_series,
@@ -20,6 +19,7 @@ from simsopt import mhd
 # TODO(mariap): Remove this and use the class from vmecpp
 class VmecppWOut(pydantic.BaseModel, arbitrary_types_allowed=True):
     version: str
+    input_extension: str = ""
     sign_of_jacobian: int
     gamma: float
     pcurr_type: str
@@ -70,6 +70,9 @@ class VmecppWOut(pydantic.BaseModel, arbitrary_types_allowed=True):
     fsqr: float
     fsqz: float
     fsql: float
+    itfsq: int = 0  # Number of iterations
+    fsqt: jt.Float[np.ndarray, "..."] = np.array([])  # Force residual
+    wdot: jt.Float[np.ndarray, "..."] = np.array([])  # Energy decay
     iota_full: jt.Float[np.ndarray, "..."]
     safety_factor: jt.Float[np.ndarray, "..."]
     pressure_full: jt.Float[np.ndarray, "..."]
@@ -89,6 +92,7 @@ class VmecppWOut(pydantic.BaseModel, arbitrary_types_allowed=True):
     spectral_width: jt.Float[np.ndarray, "..."]
     phips: jt.Float[np.ndarray, "..."]
     overr: jt.Float[np.ndarray, "..."]
+    bdotb: jt.Float[np.ndarray, "..."] | None = None
     jdotb: jt.Float[np.ndarray, "..."]
     bdotgradv: jt.Float[np.ndarray, "..."]
     DMerc: jt.Float[np.ndarray, "..."]
@@ -131,6 +135,10 @@ class VmecppWOut(pydantic.BaseModel, arbitrary_types_allowed=True):
     bsubsmnc_full: jt.Float[np.ndarray, "..."]
     bsupumns: jt.Float[np.ndarray, "..."]
     bsupvmns: jt.Float[np.ndarray, "..."]
+
+    @property
+    def nextcur(self) -> int:
+        return len(self.extcur)
 
     @property
     def n_field_periods(self) -> int:
@@ -195,14 +203,13 @@ def run_vmec(
         boundary=boundary,
         vmec_settings=vmec_settings,
     )
-    vmec_indata_cpp = vmec_indata._to_cpp_vmecindatapywrapper()
 
-    output_quantities = vmecpp._vmecpp.run(
-        vmec_indata_cpp,
+    output_quantities = vmecpp.run(
+        vmec_indata,
         verbose=vmec_settings.verbose,
         max_threads=vmec_settings.max_threads,
     )
-    return vmecppwout_from_cpp_wout(output_quantities.wout)
+    return vmecppwout_from_wout(output_quantities.wout)
 
 
 def build_vmecpp_indata(
@@ -213,15 +220,14 @@ def build_vmecpp_indata(
     if not boundary.is_stellarator_symmetric:
         raise NotImplementedError("Only stellarator symmetric surfaces are supported.")
 
-    indata = vmecpp._vmecpp.VmecINDATAPyWrapper()
+    indata = vmecpp.VmecInput.default()
 
     indata.lasym = not boundary.is_stellarator_symmetric
     indata.nfp = boundary.n_field_periods
 
     # mpol, ntor cannot be assigned directly for consistency reasons
-    mpol = vmec_settings.n_poloidal_modes
-    ntor = vmec_settings.max_toroidal_mode
-    indata._set_mpol_ntor(mpol, ntor)
+    indata.mpol = vmec_settings.n_poloidal_modes
+    indata.ntor = vmec_settings.max_toroidal_mode
 
     indata.ntheta = vmec_settings.n_poloidal_grid_points
     indata.nzeta = vmec_settings.n_toroidal_grid_points
@@ -282,6 +288,8 @@ def build_vmecpp_indata(
         np.array([1.0]),
     ).item()
 
+    # indata.bloat is left to its default value
+
     indata.lfreeb = False
 
     # indata.{mgrid_file,free_boundary_method} are not used
@@ -296,32 +304,41 @@ def build_vmecpp_indata(
 
     # indata.raxis_c and indata.zaxis_s are left to their default values so that we get
     # VMEC's initial guess for the magnetic axis
+    indata.raxis_c = np.zeros(indata.ntor + 1)
+    indata.zaxis_s = np.zeros(indata.ntor + 1)
 
     # rbc, zbs
     # (rbs and zbc are not set: we only support stellarator-symmetric boundaries)
-    _copy_boundary_to_indata(boundary=boundary, indata=indata)
-    return vmecpp.VmecInput._from_cpp_vmecindatapywrapper(indata)
+    indata.rbc = vmecpp.VmecInput.resize_2d_coeff(
+        boundary.r_cos,
+        indata.mpol,
+        indata.ntor,
+    )
+    indata.zbs = vmecpp.VmecInput.resize_2d_coeff(
+        boundary.z_sin,
+        indata.mpol,
+        indata.ntor,
+    )
+
+    return vmecpp.VmecInput.model_validate(indata)
 
 
-# TODO(mariap): replace with the new implementation as soon as it is merged
-def vmecppwout_from_cpp_wout(
-    wout: vmecpp._vmecpp.WOutFileContents,
+def vmecppwout_from_wout(
+    wout: vmecpp.VmecWOut,
 ) -> VmecppWOut:
-    assert isinstance(wout, vmecpp._vmecpp.WOutFileContents)
+    cpp_wout = wout._to_cpp_wout()
+    assert isinstance(cpp_wout, vmecpp._vmecpp.WOutFileContents)
 
-    # NOTE: we are cheating a bit here, this only works if the
-    # names of the attributes in VmecppWout and WOutFileContents correspond exactly,
-    # which is the case at the time of writing but might not be in the future.
     attributes = VmecppWOut.__annotations__.keys()
-    return VmecppWOut(**{attr: getattr(wout, attr) for attr in attributes})
+    return VmecppWOut(**{attr: getattr(cpp_wout, attr) for attr in attributes})
 
 
 def as_simsopt_vmec(equilibrium: VmecppWOut) -> mhd.Vmec:
-    fortran_wout = simsopt_compat_cpp.FortranWOutAdapter.from_vmecpp_wout(equilibrium)
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = pathlib.Path(tmpdir)
         wout_path = tmpdir / "wout_temp.nc"
-        fortran_wout.save(wout_path)
+        wout = vmecpp.VmecWOut._from_cpp_wout(equilibrium)
+        wout.save(wout_path)
         return mhd.Vmec(wout_path.as_posix())
 
 
@@ -352,49 +369,6 @@ def magnetic_field_magnitude(
         s_theta_phi=s_theta_phi,
         basis=_FourierBasis.COSINE,
     )
-
-
-def _copy_boundary_to_indata(
-    *,
-    boundary: surface_rz_fourier.SurfaceRZFourier,
-    indata: vmecpp._vmecpp.VmecINDATAPyWrapper,
-) -> None:
-    if not boundary.is_stellarator_symmetric:
-        raise ValueError("Only stellarator-symmetric boundaries are supported.")
-
-    # VMEC always uses shapes consistent with the mpol/ntor settings, while the
-    # boundary could have more or less coefficients than that. We copy over the
-    # coefficients from the boundary that are available, zeroing out the others.
-    min_mpol = min(indata.mpol, boundary.n_poloidal_modes)
-    min_ntor = min(indata.ntor, boundary.max_toroidal_mode)
-
-    indata.rbc[:, :] = 0.0
-    indata.zbs[:, :] = 0.0
-
-    # Setting poloidal modes [0, min_mpol) and toroidal modes [-min_ntor, min_ntor].
-    # The toroidal modes are conceptually in range [-min_ntor, min_ntor], but the
-    # actual index range is shifted up to be non-negative, to [0, 2 * min_ntor + 1).
-    indata.rbc[
-        :min_mpol,
-        -min_ntor + indata.ntor : min_ntor + indata.ntor + 1,
-    ] = boundary.r_cos[
-        :min_mpol,
-        -min_ntor
-        + boundary.max_toroidal_mode : min_ntor
-        + boundary.max_toroidal_mode
-        + 1,
-    ]
-
-    indata.zbs[
-        :min_mpol,
-        -min_ntor + indata.ntor : min_ntor + indata.ntor + 1,
-    ] = boundary.z_sin[
-        :min_mpol,
-        -min_ntor
-        + boundary.max_toroidal_mode : min_ntor
-        + boundary.max_toroidal_mode
-        + 1,
-    ]
 
 
 def _build_radial_interpolator(
