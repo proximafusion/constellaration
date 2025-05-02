@@ -25,6 +25,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+  "booz-xform==0.0.8",
   "jaxtyping",
   "numpy",
   "pydantic",
