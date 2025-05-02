@@ -80,6 +80,18 @@ def forward_model(
     ideal_mhd_parameters: ideal_mhd_parameters_module.IdealMHDParameters | None = None,
     settings: ConstellarationSettings | None = None,
 ) -> tuple[ConstellarationMetrics, vmec.VmecppWOut]:
+    """Runs the forward model.
+
+    Args:
+        boundary: the boundary surface of the plasma.
+        ideal_mhd_parameters: the ideal-MHD parameters; if None, default parameters in
+            vacuum are used.
+        settings: the settings for the forward model; if None, default settings are
+            used.
+
+    Returns:
+        The computed metrics for the boundary.
+    """
     if ideal_mhd_parameters is None:
         ideal_mhd_parameters = (
             ideal_mhd_parameters_module.boundary_to_ideal_mhd_parameters(boundary)
