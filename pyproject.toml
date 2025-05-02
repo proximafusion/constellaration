@@ -28,6 +28,7 @@ dependencies = [
   "booz-xform==0.0.8",
   "jaxtyping",
   "numpy",
+  "plotly",
   "pydantic",
   "scipy",
   "simsopt==1.8.1",
