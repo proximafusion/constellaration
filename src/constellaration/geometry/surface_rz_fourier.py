@@ -2,6 +2,7 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 from constellaration.geometry import surface_utils
+from simsopt import geo
 from typing_extensions import Self
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
@@ -140,6 +141,28 @@ class SurfaceRZFourier(pydantic.BaseModel, arbitrary_types_allowed=True):
             )
 
         return self
+
+
+def from_simsopt(surface: geo.SurfaceRZFourier) -> SurfaceRZFourier:
+    """Convert a SIMSOPT SurfaceRZFourier to a SurfaceRZFourier."""
+    r_cos = surface.rc
+    z_sin = surface.zs
+
+    if not surface.stellsym:
+        r_sin = surface.rs
+        z_cos = surface.zc
+    else:
+        r_sin = None
+        z_cos = None
+
+    return SurfaceRZFourier(
+        r_cos=r_cos,
+        r_sin=r_sin,
+        z_cos=z_cos,
+        z_sin=z_sin,
+        n_field_periods=int(surface.nfp),
+        is_stellarator_symmetric=bool(surface.stellsym),
+    )
 
 
 def get_largest_non_zero_modes(
