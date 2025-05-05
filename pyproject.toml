@@ -30,6 +30,7 @@ dependencies = [
   "numpy",
   "plotly",
   "pydantic",
+  "pymoo @ git+https://github.com/anyoptimization/pymoo.git@5da15ca440ee08a68d5b6c386013682296a37c1c",
   "qicna @ git+https://github.com/rogeriojorge/pyQIC.git@d130f6fa7de4ba8fd039f5c5ac42f553a2a292fe",
   "scipy",
   "simsopt==1.8.1",
