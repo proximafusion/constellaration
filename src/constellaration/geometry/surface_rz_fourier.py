@@ -165,6 +165,47 @@ def from_simsopt(surface: geo.SurfaceRZFourier) -> SurfaceRZFourier:
     )
 
 
+def to_simsopt(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[np.ndarray, "n_theta n_phi 2"] | None = None,
+) -> geo.SurfaceRZFourier:
+    """Convert a surface in the types module to a simsopt surface RZ Fourier."""
+    simsopt_surface = geo.SurfaceRZFourier(
+        nfp=surface.n_field_periods,
+        stellsym=surface.is_stellarator_symmetric,
+        mpol=surface.max_poloidal_mode,
+        ntor=surface.max_toroidal_mode,
+        quadpoints_theta=(
+            theta_phi[:, 0, 0] / (2 * np.pi) if theta_phi is not None else None
+        ),
+        quadpoints_phi=(
+            theta_phi[0, :, 1] / (2 * np.pi) if theta_phi is not None else None
+        ),
+    )
+
+    for m in range(surface.n_poloidal_modes):
+        for n in range(
+            -surface.max_toroidal_mode,
+            surface.max_toroidal_mode + 1,
+        ):
+            rc = surface.r_cos[m, n + surface.max_toroidal_mode]
+            simsopt_surface.set_rc(m, n, rc)
+
+            zs = surface.z_sin[m, n + surface.max_toroidal_mode]
+            simsopt_surface.set_zs(m, n, zs)
+
+            if not surface.is_stellarator_symmetric:
+                assert surface.r_sin is not None
+                rs = surface.r_sin[m, n + surface.max_toroidal_mode]
+                simsopt_surface.set_rs(m, n, rs)
+
+                assert surface.z_cos is not None
+                zc = surface.z_cos[m, n + surface.max_toroidal_mode]
+                simsopt_surface.set_zc(m, n, zc)
+
+    return simsopt_surface
+
+
 def get_largest_non_zero_modes(
     surface: SurfaceRZFourier,
     tolerance: float = 1.0e-15,
