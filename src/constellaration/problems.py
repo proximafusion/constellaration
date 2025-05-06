@@ -168,7 +168,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
         return _normalize_between_bounds(
             value=metrics.minimum_normalized_magnetic_gradient_scale_length,
             lower_bound=0.0,
-            upper_bound=10.0,
+            upper_bound=20.0,
         )
 
     def _normalized_constraint_violations(
@@ -252,15 +252,20 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
     _does_it_require_qi: bool = True
 
     def score(self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]) -> float:
-        feasible_metrics: list[forward_model.ConstellarationMetrics] = []
+        metrics: list[forward_model.ConstellarationMetrics] = []
         for boundary in boundaries:
             setting = forward_model.ConstellarationSettings.default_high_fidelity()
-            metrics, _ = forward_model.forward_model(
+            m, _ = forward_model.forward_model(
                 boundary=boundary,
                 settings=setting,
             )
-            if self.is_feasible(metrics=metrics):
-                feasible_metrics.append(metrics)
+            metrics.append(m)
+        return self._score(metrics)
+
+    def _score(self, metrics: list[forward_model.ConstellarationMetrics]) -> float:
+        feasible_metrics = [m for m in metrics if self.is_feasible(m)]
+        if not feasible_metrics:
+            return 0.0
         X = np.array(
             [
                 (
@@ -270,7 +275,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
                 for m in feasible_metrics
             ]
         )
-        reference_point = np.array([-5.0, 1.0])
+        reference_point = np.array([1.0, 20.0])
         return _hypervolume(
             X=X,
             reference_point=reference_point,
