@@ -13,7 +13,7 @@ NpOrJaxArray = np.ndarray | jt.Array
 _MAX_VMEC_N_MODES = 100
 
 
-class NearAxisConfiguration(pydantic.BaseModel):
+class NearAxisConfiguration(pydantic.BaseModel, arbitrary_types_allowed=True):
     n_field_periods: int
     """The number of field periods."""
 
