@@ -52,7 +52,7 @@ class ConstellarationSettings(pydantic.BaseModel):
             fidelity="low_fidelity",
         )
     )
-    boozer_preset_settings: boozer_module.BoozerPresetSettings = (
+    boozer_preset_settings: boozer_module.BoozerPresetSettings | None = (
         boozer_module.BoozerPresetSettings(
             normalized_toroidal_flux=[1.0],
         )
@@ -72,6 +72,16 @@ class ConstellarationSettings(pydantic.BaseModel):
             vmec_preset_settings=vmec_settings_module.VmecPresetSettings(
                 fidelity="high_fidelity",
             ),
+        )
+
+    @staticmethod
+    def default_high_fidelity_skip_qi() -> "ConstellarationSettings":
+        return ConstellarationSettings(
+            vmec_preset_settings=vmec_settings_module.VmecPresetSettings(
+                fidelity="high_fidelity",
+            ),
+            boozer_preset_settings=None,
+            qi_settings=None,
         )
 
 
@@ -180,8 +190,8 @@ def forward_model(
         * equilibrium.n_field_periods
     )
 
-    # Quasi-Symmetry metrics
-    if settings.qi_settings is not None:
+    # QI metrics
+    if settings.qi_settings is not None and settings.boozer_preset_settings is not None:
         boozer_settings = (
             boozer_module.create_boozer_settings_from_equilibrium_resolution(
                 mhd_equilibrium=equilibrium, settings=settings.boozer_preset_settings

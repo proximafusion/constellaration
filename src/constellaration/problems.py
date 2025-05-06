@@ -7,31 +7,78 @@ from pymoo.indicators import hv
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
 
+_DEFAULT_RELATIVE_TOLERANCE = 1e-2
 
-class SingleObjectiveProblem(abc.ABC):
-    def score(self, boundary: surface_rz_fourier.SurfaceRZFourier) -> float:
-        settings = forward_model.ConstellarationSettings.default_high_fidelity()
-        metrics, _ = forward_model.forward_model(boundary, settings=settings)
-        if not self.is_feasible(metrics):
-            return float("nan")
-        return self._score(metrics)
+
+class _Problem(abc.ABC):
+    _does_it_require_qi: bool
+
+    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
+        """Checks if the design is feasible based on the constraints."""
+        normalized_constraint_violations = self._normalized_constraint_violations(
+            metrics
+        )
+        return bool(
+            np.all(normalized_constraint_violations <= _DEFAULT_RELATIVE_TOLERANCE)
+        )
 
     @abc.abstractmethod
-    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
         pass
+
+
+class SingleObjectiveProblem(_Problem):
+    def score(self, boundary: surface_rz_fourier.SurfaceRZFourier) -> float:
+        """Computes a normalized score (0: bad, 1: good) for the design."""
+        if self._does_it_require_qi:
+            settings = forward_model.ConstellarationSettings.default_high_fidelity()
+        else:
+            settings = (
+                forward_model.ConstellarationSettings.default_high_fidelity_skip_qi()
+            )
+        metrics, _ = forward_model.forward_model(boundary, settings=settings)
+        if not self.is_feasible(metrics):
+            return 0.0
+        return self._score(metrics)
 
     @abc.abstractmethod
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         pass
 
 
-class MultiObjectiveProblem(abc.ABC):
+class MultiObjectiveProblem(_Problem):
     @abc.abstractmethod
     def score(self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]) -> float:
+        """Computes the hypervolume for the feasible designs."""
         pass
 
 
 class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
+    """A simple geometrical problem.
+
+    Feasibility constraints:
+        1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the boundary's
+            “width” to its “height.”
+        2. Average triangularity <= average_triangularity_upper_bound. Triangularity
+            measures how “D-shaped” the boundary is; negative values mean more indentation.
+        3. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+            Rotational transform describes the winding of magnetic field lines around
+            the plasma edge per field period.
+
+    Scoring:
+        * Computes a normalized score based on the maximum elongation of the boundary.
+        It is scaled from 1 (circular) to 10 (very elongated). Higher scores reward
+        shapes closer to circular flux surfaces.
+
+    Attributes:
+        aspect_ratio_upper_bound: Max allowed aspect ratio.
+        average_triangularity_upper_bound: Max allowed average triangularity.
+        edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
+            required edge rotational transform per field period.
+    """  # noqa: E501
+
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 5.0
 
     _average_triangularity_upper_bound: float = -0.5
@@ -40,6 +87,8 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
         pydantic.PositiveFloat
     ) = 0.2
 
+    _does_it_require_qi: bool = False
+
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         return 1.0 - _normalize_between_bounds(
             value=metrics.max_elongation,
@@ -47,26 +96,60 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
             upper_bound=10.0,
         )
 
-    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
-        if (
-            _is_constraint_violated(
-                value=metrics.aspect_ratio,
-                upper_bound=self._aspect_ratio_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.average_triangularity,
-                upper_bound=self._average_triangularity_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.edge_rotational_transform_over_n_field_periods,
-                lower_bound=self._edge_rotational_transform_over_n_field_periods_lower_bound,
-            )
-        ):
-            return False
-        return True
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
+        constraint_targets = np.array(
+            [
+                self._aspect_ratio_upper_bound,
+                self._average_triangularity_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound,
+            ]
+        )
+        constraint_violations = np.array(
+            [
+                metrics.aspect_ratio - self._aspect_ratio_upper_bound,
+                metrics.average_triangularity - self._average_triangularity_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - metrics.edge_rotational_transform_over_n_field_periods,
+            ]
+        )
+        return constraint_violations / np.abs(constraint_targets)
 
 
 class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
+    """A problem to evaluate stellarator designs for ease of construction and deviation
+
+    Feasibility constraints:
+        1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the
+            boundary's “width” to its “height.”
+        2. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+            Rotational transform describes the winding of magnetic field lines around
+            the plasma edge per field period.
+        3. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in
+            terms of confinemetn of fusion-born energetic particles, neoclassical
+            transport,
+            and reduction of bootstrap current.
+        4. Edge magnetic mirror ratio <= edge_magnetic_mirror_ratio_upper_bound.
+            Magnetic mirror ratio controls the variation in field strength at the
+            plasma boundary.
+        5. Max elongation <= max_elongation_upper_bound. Elongation measures the
+            vertical stretching of the plasma boundary.
+
+    Scoring:
+        * Computes a normalized score based on the minimum normalized magnetic gradient
+          scale length at the edge. It is scaled linearly from 0 (poor) to 1 (optimal).
+          Higher scores reward fields that are easier to realize with coils.
+
+    Attributes:
+        aspect_ratio_upper_bound: Max allowed aspect ratio.
+        edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
+            required edge rotational transform per field period.
+        log10_qi_upper_bound: Max allowed log10 of the QI residual.
+        edge_magnetic_mirror_ratio_upper_bound: Max allowed edge magnetic mirror ratio.
+        max_elongation_upper_bound: Max allowed elongation.
+    """  # noqa: E501
+
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 10.0
 
     _edge_rotational_transform_over_n_field_periods_lower_bound: (
@@ -79,6 +162,8 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
 
     _max_elongation_upper_bound: pydantic.PositiveFloat = 5.0
 
+    _does_it_require_qi: bool = True
+
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         return _normalize_between_bounds(
             value=metrics.minimum_normalized_magnetic_gradient_scale_length,
@@ -86,39 +171,69 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
             upper_bound=10.0,
         )
 
-    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
-        if metrics.qi is None:
-            return False
-        if (
-            _is_constraint_violated(
-                value=metrics.aspect_ratio,
-                upper_bound=self._aspect_ratio_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.edge_rotational_transform_over_n_field_periods,
-                lower_bound=self._edge_rotational_transform_over_n_field_periods_lower_bound,
-            )
-            or _is_constraint_violated(
-                value=np.log10(metrics.qi),
-                upper_bound=self._log10_qi_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.edge_magnetic_mirror_ratio,
-                upper_bound=self._edge_magnetic_mirror_ratio_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.max_elongation,
-                upper_bound=self._max_elongation_upper_bound,
-            )
-        ):
-            return False
-        return True
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
+        assert metrics.qi is not None
+        constraint_violations = np.array(
+            [
+                metrics.aspect_ratio - self._aspect_ratio_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - metrics.edge_rotational_transform_over_n_field_periods,
+                np.log10(metrics.qi) - self._log10_qi_upper_bound,
+                metrics.edge_magnetic_mirror_ratio
+                - self._edge_magnetic_mirror_ratio_upper_bound,
+                metrics.max_elongation - self._max_elongation_upper_bound,
+            ]
+        )
+        constraint_targets = np.array(
+            [
+                self._aspect_ratio_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound,
+                self._log10_qi_upper_bound,
+                self._edge_magnetic_mirror_ratio_upper_bound,
+                self._max_elongation_upper_bound,
+            ]
+        )
+        return constraint_violations / np.abs(constraint_targets)
 
 
 class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
-    _aspect_ratio_over_edge_rotational_transform_upper_bound: pydantic.PositiveFloat = (
-        10.0
-    )
+    """A multi-objective problem to evaluate the trade-off between compactness and
+    simple coils for ideal-MHD stable QI stellarator designs.
+
+    Feasibility constraints:
+        1. Edge rotational transform >=
+            edge_rotational_transform_over_n_field_periods_lower_bound.
+            The rotational transform describes the winding of magnetic field lines
+            around the plasma edge per field period.
+        2. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in
+            terms of confinemetn of fusion-born energetic particles, neoclassical
+            transport, and reduction of bootstrap current.
+        3. Edge magnetic mirror ratio <= edge_magnetic_mirror_ratio_upper_bound.
+            Magnetic mirror ratio controls the variation in field strength at the
+            plasma boundary.
+        4. Flux compression in regions of bad curvature <=
+            flux_compression_in_regions_of_bad_curvature_upper_bound. The flux
+            compression in regions of bad curvature is a geometrical proxy for
+            turbulent transport.
+        5. Vacuum well >= vacuum_well_lower_bound. The vacuum well is a measure of the
+            stability of the plasma against ideal-MHD instabilities.
+
+    Scoring:
+        * Computes the hypervolume of the feasible designs in the 2D space defined by
+          the minimum normalized magnetic gradient scale length and aspect ratio.
+          Higher scores reward set of designs with larger hypervolume.
+
+    Attributes:
+        edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
+            required edge rotational transform per field period.
+        log10_qi_upper_bound: Max allowed log10 of the QI residual.
+        edge_magnetic_mirror_ratio_upper_bound: Max allowed edge magnetic mirror ratio.
+        flux_compression_in_regions_of_bad_curvature_upper_bound: Max allowed
+            flux compression in regions of bad curvature.
+        vacuum_well_lower_bound: Minimum required vacuum well.
+    """
 
     _edge_rotational_transform_over_n_field_periods_lower_bound: (
         pydantic.PositiveFloat
@@ -133,6 +248,8 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
     ) = 0.9
 
     _vacuum_well_lower_bound: pydantic.NonNegativeFloat = 0.0
+
+    _does_it_require_qi: bool = True
 
     def score(self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]) -> float:
         feasible_metrics: list[forward_model.ConstellarationMetrics] = []
@@ -159,43 +276,40 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
             reference_point=reference_point,
         )
 
-    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
         assert metrics.qi is not None
         assert metrics.flux_compression_in_regions_of_bad_curvature is not None
-        if (
-            _is_constraint_violated(
-                value=metrics.aspect_ratio_over_edge_rotational_transform,
-                upper_bound=self._aspect_ratio_over_edge_rotational_transform_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.edge_rotational_transform_over_n_field_periods,
-                lower_bound=self._edge_rotational_transform_over_n_field_periods_lower_bound,
-            )
-            or _is_constraint_violated(
-                value=np.log10(metrics.qi),
-                upper_bound=self._log10_qi_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.edge_magnetic_mirror_ratio,
-                upper_bound=self._edge_magnetic_mirror_ratio_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.flux_compression_in_regions_of_bad_curvature,
-                upper_bound=self._flux_compression_in_regions_of_bad_curvature_upper_bound,
-            )
-            or _is_constraint_violated(
-                value=metrics.vacuum_well,
-                lower_bound=self._vacuum_well_lower_bound,
-            )
-        ):
-            return False
-        return True
+        constraint_violations = np.array(
+            [
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - metrics.edge_rotational_transform_over_n_field_periods,
+                np.log10(metrics.qi) - self._log10_qi_upper_bound,
+                metrics.edge_magnetic_mirror_ratio
+                - self._edge_magnetic_mirror_ratio_upper_bound,
+                metrics.flux_compression_in_regions_of_bad_curvature
+                - self._flux_compression_in_regions_of_bad_curvature_upper_bound,
+                self._vacuum_well_lower_bound - metrics.vacuum_well,
+            ]
+        )
+        constraint_targets = np.array(
+            [
+                self._edge_rotational_transform_over_n_field_periods_lower_bound,
+                self._log10_qi_upper_bound,
+                self._edge_magnetic_mirror_ratio_upper_bound,
+                self._flux_compression_in_regions_of_bad_curvature_upper_bound,
+                self._vacuum_well_lower_bound,
+            ]
+        )
+        return constraint_violations / np.abs(constraint_targets)
 
 
 def _hypervolume(
     X: jt.Float[np.ndarray, "n_points n_metrics"],
     reference_point: jt.Float[np.ndarray, " n_metrics"],
 ) -> float:
+    """Computes the hypervolume of X with respect to the reference point."""
     indicator = hv.Hypervolume(ref_point=reference_point)
     output = indicator(X)
     assert output is not None
@@ -207,33 +321,7 @@ def _normalize_between_bounds(
     lower_bound: float,
     upper_bound: float,
 ) -> float:
+    """Normalizes a value between 0 and 1 based on the given bounds."""
     assert lower_bound < upper_bound
     normalized_value = (value - lower_bound) / (upper_bound - lower_bound)
     return np.clip(normalized_value, 0.0, 1.0)
-
-
-def _is_constraint_violated(
-    value: float,
-    lower_bound: float = -np.inf,
-    upper_bound: float = np.inf,
-    relative_epsilon: float = 1e-2,
-) -> bool:
-    """Check if a value violates the constraint defined by the lower and upper bounds.
-
-    Args:
-        value: The value to check.
-        lower_bound: The lower bound of the constraint. Defaults to -np.inf.
-        upper_bound: The upper bound of the constraint. Defaults to np.inf.
-        relative_epsilon: A small value to avoid floating-point precision issues.
-            Defaults to 1e-2.
-
-    Returns:
-        True if the value violates the constraint, False otherwise.
-    """
-    soft_lower_bound = (
-        -relative_epsilon if lower_bound == 0 else lower_bound * (1 - relative_epsilon)
-    )
-    soft_upper_bound = (
-        relative_epsilon if upper_bound == 0 else upper_bound * (1 + relative_epsilon)
-    )
-    return value < soft_lower_bound or value > soft_upper_bound
