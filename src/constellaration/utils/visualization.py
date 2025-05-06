@@ -67,6 +67,28 @@ def plot_surface(
     return fig
 
 
+def plot_boundary(boundary: surface_rz_fourier.SurfaceRZFourier) -> mpl_figure.Figure:
+    fig, ax = plt.subplots()
+    theta_phi = surface_utils.make_theta_phi_grid(
+        n_theta=64,
+        n_phi=5,
+        phi_upper_bound=np.pi / boundary.n_field_periods,
+        include_endpoints=True,
+    )
+    rz_points = surface_rz_fourier.evaluate_points_rz(boundary, theta_phi)
+    for i in range(theta_phi.shape[1]):
+        ax.plot(
+            rz_points[:, i, 0],
+            rz_points[:, i, 1],
+            label=f"{i}/4" + r"$\frac{\pi}{N_{\text{fp}}}$",
+        )
+    ax.set_xlabel("R")
+    ax.set_ylabel("Z")
+    ax.set_aspect("equal")
+    ax.legend()
+    return fig
+
+
 def plot_boozer_surfaces(
     equilibrium: vmec_module.VmecppWOut,
     settings: boozer_module.BoozerSettings | None = None,
