@@ -103,8 +103,27 @@ def _get_torsion_at_rotational_transform_over_n_field_periods(
     aspect_ratio: float,
     elongation: float,
 ) -> float:
-    """Get the torsion required to achieve a given rotational transform over the number
-    of field periods."""
+    r"""Get the torsion required to achieve a given rotational transform over the number
+    of field periods.
+
+    This function is based on a simple linear fit to map the aspect ratio, elongation,
+    and torsion to the rotational transform over the number of field periods. The linear
+    mapping is:
+
+    .. math::
+        \frac{\iota}{N_{\text{fp}}} = \frac{c_0}{A} (c_1 \kappa  + (\epsilon - 1))
+
+    where :math:`\iota` is the rotational transform, :math:`N_{\text{fp}}` is the number
+    of field periods, :math:`A` is the aspect ratio, :math:`\kappa` is the torsion,
+    :math:`\epsilon` is the elongation, and :math:`c_0` and :math:`c_1` are constants
+    determined by the linear fit.
+
+    Args:
+        rotational_transform_over_n_field_periods: The desired rotational transform over
+            the number of field periods.
+        aspect_ratio: The aspect ratio of the plasma.
+        elongation: The elongation of the plasma.
+    """
     c0, c1 = _EDGE_IOTA_OVER_N_FIELD_PERIODS_SCALING_PARAMETERS
     inverse_aspect = 1.0 / aspect_ratio
     return (
