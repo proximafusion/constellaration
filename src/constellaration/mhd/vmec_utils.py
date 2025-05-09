@@ -256,10 +256,6 @@ def build_vmecpp_indata(
     # constraining on the toroidal current since we expect it to be negligible.
     indata.ncurr = 1
 
-    # In dapper IdealMHDParameters, the scaling is part of the profile coefficients
-    # themselves (so we don't need the extra pres_scale parameter). But in VMEC,
-    # we separate the scale factor out in pres_scale.
-    # Similarly below for FluxPowerSeriesProfile.
     indata.pmass_type = "power_series"
     indata.pres_scale = mhd_parameters.pressure.coefficients[0]
     if indata.pres_scale == 0.0:
