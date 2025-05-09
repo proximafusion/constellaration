@@ -7,7 +7,7 @@ import numpy as np
 from plotly import graph_objects as go
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import surface_rz_fourier, surface_utils
-from constellaration.mhd import vmec as vmec_module
+from constellaration.mhd import vmec_utils
 from simsopt import mhd
 
 
@@ -90,14 +90,14 @@ def plot_boundary(boundary: surface_rz_fourier.SurfaceRZFourier) -> mpl_figure.F
 
 
 def plot_boozer_surfaces(
-    equilibrium: vmec_module.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
     settings: boozer_module.BoozerSettings | None = None,
     save_dir_path: pathlib.Path | None = None,
 ) -> list[mpl_figure.Figure]:
     """Creates Boozer surface plots."""
     if settings is None:
         settings = boozer_module.BoozerSettings()
-    vmec = vmec_module.as_simsopt_vmec(equilibrium)
+    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
     boozer = mhd.Boozer(
         equil=vmec,
         mpol=settings.n_poloidal_modes,

@@ -1,11 +1,11 @@
 import jaxtyping as jt
 import numpy as np
-from constellaration.geometry import radial_profile
-from constellaration.mhd import vmec, vmec_utils
+from constellaration.geometry import radial_profile, surface_utils
+from constellaration.mhd import vmec_utils
 
 
 def vacuum_well(
-    equilibrium: vmec.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
 ) -> float:
     r"""Computes a single number that summarizes the vacuum magnetic well, given by the
     formula.
@@ -40,7 +40,7 @@ def vacuum_well(
 
 
 def magnetic_mirror_ratio(
-    equilibrium: vmec.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
 ) -> radial_profile.InterpolatedRadialProfile:
     magnetic_field_strength = _magnetic_field_strength_nyquist_resolution(equilibrium)
     magnetic_field_strength_max = np.max(magnetic_field_strength, axis=(1, 2))
@@ -55,7 +55,7 @@ def magnetic_mirror_ratio(
 
 
 def normalized_magnetic_gradient_scale_length(
-    equilibrium: vmec.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
     theta_phi: jt.Float[np.ndarray, "n_poloidal_points n_toroidal_points 2"],
 ) -> jt.Float[np.ndarray, "n_poloidal_points n_toroidal_points"]:
     """Computes the magnetic gradient scale length.
@@ -380,26 +380,26 @@ def normalized_magnetic_gradient_scale_length(
 
 
 def _magnetic_field_strength_nyquist_resolution(
-    equilibrium: vmec.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
 ) -> jt.Float[np.ndarray, "n_flux_surfaces n_poloidal_points n_toroidal_points 3"]:
     (
         n_poloidal_points,
         n_toroidal_points,
-    ) = vmec_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
         n_poloidal_modes=equilibrium.mpol,
         max_toroidal_mode=equilibrium.ntor,
     )
     phi_upper_bound = (
         2 * np.pi / equilibrium.n_field_periods / (1 + int(not equilibrium.lasym))
     )
-    s_theta_phi = vmec_utils.make_s_theta_phi_grid(
+    s_theta_phi = surface_utils.make_s_theta_phi_grid(
         n_radial_points=equilibrium.ns,
         n_poloidal_points=n_poloidal_points,
         n_toroidal_points=n_toroidal_points,
         phi_upper_bound=phi_upper_bound,
         include_endpoints=True,
     )
-    return vmec.magnetic_field_magnitude(
+    return vmec_utils.magnetic_field_magnitude(
         equilibrium=equilibrium,
         s_theta_phi=s_theta_phi,
     )

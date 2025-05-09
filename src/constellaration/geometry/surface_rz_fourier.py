@@ -4,12 +4,13 @@ import pydantic
 from constellaration.geometry import surface_utils
 from simsopt import geo
 from typing_extensions import Self
+from vmecpp import _pydantic_numpy as pydantic_numpy
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 FourierModes = jt.Int[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 
 
-class SurfaceRZFourier(pydantic.BaseModel, arbitrary_types_allowed=True):
+class SurfaceRZFourier(pydantic_numpy.BaseModelWithNumpy):
     r"""Represents a toroidal (homeomorphic to a torus) surface as a Fourier series.
 
     The surface maps the polodial angle theta and the toroidal angle phi to points in

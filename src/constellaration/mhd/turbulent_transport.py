@@ -3,7 +3,7 @@ from typing import Any, cast
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from constellaration.mhd import vmec as vmec_module
+from constellaration.mhd import vmec_utils
 from simsopt import mhd
 
 
@@ -24,10 +24,10 @@ class IdealMHDTurbulentTransportMetricsSettings(
 
 
 def compute_flux_compression_in_regions_of_bad_curvature(
-    equilibrium: vmec_module.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
     settings: IdealMHDTurbulentTransportMetricsSettings,
 ) -> float:
-    vmec = vmec_module.as_simsopt_vmec(equilibrium)
+    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
 
     alpha, theta = _set_up_surface_grid(
         settings=settings,

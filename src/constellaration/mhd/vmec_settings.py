@@ -1,8 +1,7 @@
 from typing import Literal
 
 import pydantic
-from constellaration.geometry import surface_rz_fourier
-from constellaration.mhd import vmec_utils
+from constellaration.geometry import surface_rz_fourier, surface_utils
 
 
 class VmecMultiGridStep(pydantic.BaseModel):
@@ -133,7 +132,7 @@ def vmec_settings_high_fidelity_fixed_boundary(
     (
         n_poloidal_points,
         n_toroidal_points,
-    ) = vmec_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
         n_poloidal_modes=n_poloidal_modes,
         max_toroidal_mode=max_toroidal_mode,
     )
@@ -184,7 +183,7 @@ def vmec_settings_low_fidelity_fixed_boundary(
     (
         n_poloidal_points,
         n_toroidal_points,
-    ) = vmec_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
         n_poloidal_modes=n_poloidal_modes,
         max_toroidal_mode=max_toroidal_mode,
     )
@@ -237,7 +236,7 @@ def vmec_settings_from_boundary_resolution(
     (
         n_poloidal_points,
         n_toroidal_points,
-    ) = vmec_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
         n_poloidal_modes=n_poloidal_modes,
         max_toroidal_mode=max_toroidal_mode,
     )

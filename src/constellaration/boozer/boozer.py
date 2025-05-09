@@ -1,7 +1,7 @@
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from constellaration.mhd import vmec as vmec_module
+from constellaration.mhd import vmec_utils
 from simsopt import mhd
 
 RADIAL_PROFILE = jt.Float[np.ndarray, " n_flux_surfaces"]
@@ -233,10 +233,10 @@ class BoozerPresetSettings(pydantic.BaseModel):
 
 
 def run_boozer(
-    equilibrium: vmec_module.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
     settings: BoozerSettings,
 ) -> BoozerOutput:
-    vmec = vmec_module.as_simsopt_vmec(equilibrium)
+    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
     boozer = mhd.Boozer(
         equil=vmec,
         mpol=settings.n_poloidal_modes,
@@ -301,7 +301,7 @@ def run_boozer(
 
 
 def create_boozer_settings_from_equilibrium_resolution(
-    mhd_equilibrium: vmec_module.VmecppWOut,
+    mhd_equilibrium: vmec_utils.VmecppWOut,
     settings: BoozerPresetSettings,
 ) -> BoozerSettings:
     """Derives Boozer transformation settings from the resolution of the equilibriumn
@@ -318,7 +318,7 @@ def create_boozer_settings_from_equilibrium_resolution(
 
 
 def boozer_settings_from_equilibrium_resolution(
-    mhd_equilibrium: vmec_module.VmecppWOut,
+    mhd_equilibrium: vmec_utils.VmecppWOut,
     normalized_toroidal_flux: list[float] | None = None,
     verbose: bool = False,
 ) -> BoozerSettings:

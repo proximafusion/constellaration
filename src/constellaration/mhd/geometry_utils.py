@@ -1,17 +1,17 @@
 import jaxtyping as jt
 import numpy as np
-from constellaration.mhd import vmec
+from constellaration.geometry import surface_rz_fourier, surface_utils
+from constellaration.mhd import vmec_utils
 from scipy import optimize, special
 
 
 def max_elongation(
-    equilibrium: vmec.VmecppWOut,
+    equilibrium: vmec_utils.VmecppWOut,
     n_poloidal_points: int,
     n_toroidal_points: int,
 ) -> float:
     """
     Compute the maximum cross-sectional elongation of the outermost flux surface
-    from a VMEC equilibrium by:
 
     1) Computing the magnetic axis (R_axis, Z_axis) and its tangent at each toroidal
         angle.
@@ -167,8 +167,8 @@ def max_elongation(
 
 
 def average_triangularity(
-    equilibrium: vmec.VmecppWOut,
-    n_poloidal_points: int,
+    surface: surface_rz_fourier.SurfaceRZFourier,
+    n_poloidal_points: int = 201,
 ) -> float:
     r"""Compute the average triangularity of the plasma boundary at the two stellarator
     symmetry planes.
@@ -188,43 +188,35 @@ def average_triangularity(
     The average triangularity is then computed by averaging the triangularity over the
     two stellarator symmetry planes (phi = 0 and phi = pi/nfp).
     """
-    if equilibrium.lasym:
-        raise NotImplementedError("Non-stellarator symmetric equilibria not supported.")
+    if not surface.is_stellarator_symmetric:
+        raise NotImplementedError("Non-stellarator symmetric surfaces not supported.")
 
-    xm = equilibrium.xm
-    xn = equilibrium.xn
-
-    rmnc = equilibrium.rmnc[[0, -1], :]
-    zmns = equilibrium.zmns[[0, -1], :]
-
-    theta = np.linspace(0, 2 * np.pi, n_poloidal_points, endpoint=False)
-    phi = np.linspace(0, np.pi / equilibrium.nfp, 2)
-
-    theta2D, phi2D = np.meshgrid(theta, phi, indexing="ij")
-    angle = (
-        xm[:, np.newaxis, np.newaxis] * theta2D[np.newaxis, :, :]
-        - xn[:, np.newaxis, np.newaxis] * phi2D[np.newaxis, :, :]
+    theta_phi = surface_utils.make_theta_phi_grid(
+        n_theta=n_poloidal_points,
+        n_phi=2,
+        phi_upper_bound=np.pi / surface.n_field_periods,
+        include_endpoints=True,
     )
 
-    R = np.sum(
-        rmnc[..., np.newaxis, np.newaxis] * np.cos(angle)[np.newaxis, ...], axis=1
+    RZ = surface_rz_fourier.evaluate_points_rz(
+        surface=surface,
+        theta_phi=theta_phi,
     )
-    Z = np.sum(
-        zmns[..., np.newaxis, np.newaxis] * np.sin(angle)[np.newaxis, ...], axis=1
-    )
+    R = RZ[..., 0]
+    Z = RZ[..., 1]
 
-    # Extract the magnetic axis
-    R0 = R[0, 0]
+    # Approximate the magnetic axis with the surface centroid.
+    R0 = np.mean(R, axis=0)
 
-    R_max = np.max(R[-1], axis=0)
-    R_min = np.min(R[-1], axis=0)
+    R_max = np.max(R, axis=0)
+    R_min = np.min(R, axis=0)
 
     minor_radius = (R_max - R_min) / 2
 
-    indices_of_max_Z = np.argmax(Z[-1], axis=0)
+    indices_of_max_Z = np.argmax(Z, axis=0)
 
     # Top and bottom triangularity at the two stellarator symmetry planes are equal.
-    triangularity = (R0 - R[-1, indices_of_max_Z, np.arange(2)]) / minor_radius
+    triangularity = (R0 - R[indices_of_max_Z, np.arange(2)]) / minor_radius
 
     return np.mean(triangularity)
 

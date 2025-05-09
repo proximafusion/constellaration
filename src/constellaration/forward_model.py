@@ -10,11 +10,7 @@ from constellaration.mhd import geometry_utils
 from constellaration.mhd import (
     ideal_mhd_parameters as ideal_mhd_parameters_module,
 )
-from constellaration.mhd import (
-    magnetics_utils,
-    turbulent_transport,
-    vmec,
-)
+from constellaration.mhd import magnetics_utils, turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
 from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
@@ -89,7 +85,7 @@ def forward_model(
     boundary: surface_rz_fourier.SurfaceRZFourier,
     ideal_mhd_parameters: ideal_mhd_parameters_module.IdealMHDParameters | None = None,
     settings: ConstellarationSettings | None = None,
-) -> tuple[ConstellarationMetrics, vmec.VmecppWOut]:
+) -> tuple[ConstellarationMetrics, vmec_utils.VmecppWOut]:
     """Runs the forward model.
 
     Args:
@@ -112,7 +108,7 @@ def forward_model(
         boundary,
         settings=settings.vmec_preset_settings,
     )
-    equilibrium = vmec.run_vmec(
+    equilibrium = vmec_utils.run_vmec(
         boundary=boundary,
         mhd_parameters=ideal_mhd_parameters,
         vmec_settings=vmec_settings,
@@ -122,7 +118,7 @@ def forward_model(
     (
         n_poloidal_points,
         n_toroidal_points,
-    ) = vmec_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
         n_poloidal_modes=equilibrium.mpol,
         max_toroidal_mode=equilibrium.ntor,
     )
@@ -134,8 +130,7 @@ def forward_model(
     )
 
     average_triangularity = geometry_utils.average_triangularity(
-        equilibrium=equilibrium,
-        n_poloidal_points=n_poloidal_points,
+        surface=boundary,
     )
 
     # Magnetic metrics
