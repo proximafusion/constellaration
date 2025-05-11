@@ -4,15 +4,20 @@ from typing import Any
 
 import IPython.display as ipd
 import matplotlib.figure as mpl_figure
+from matplotlib import axes
 from PIL import Image
 from plotly import graph_objects as go
 from plotly import subplots as plotly_subplots
 
 
 def combine_figures_side_by_side(
-    fig1: mpl_figure.Figure, fig2: mpl_figure.Figure
+    fig1: mpl_figure.Figure | axes.Axes, fig2: mpl_figure.Figure | axes.Axes
 ) -> None:
-    """Combines two matplotlib figures side by side and displays the result."""
+    """Combines two matplotlib figures or axes side by side and displays the result."""
+
+    # Convert axes to figures if necessary
+    fig1 = _to_figure(fig1)
+    fig2 = _to_figure(fig2)
 
     img1 = _figure_to_image(fig1)
     img2 = _figure_to_image(fig2)
@@ -68,3 +73,12 @@ def _figure_to_image(fig: mpl_figure.Figure) -> Image.Image:
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     return Image.open(buf)
+
+
+def _to_figure(fig: mpl_figure.Figure | axes.Axes) -> mpl_figure.Figure:
+    """Converts an Axes object to a Figure object."""
+    if isinstance(fig, axes.Axes):
+        ax_figure = fig.get_figure()
+        assert ax_figure is not None
+        fig = ax_figure
+    return fig

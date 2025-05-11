@@ -1,13 +1,16 @@
 import pathlib
 
 import booz_xform
+import matplotlib as mpl
 import matplotlib.figure as mpl_figure
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import axes
 from plotly import graph_objects as go
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import surface_rz_fourier, surface_utils
 from constellaration.mhd import vmec_utils
+from scipy import interpolate
 from simsopt import mhd
 
 
@@ -67,8 +70,14 @@ def plot_surface(
     return fig
 
 
-def plot_boundary(boundary: surface_rz_fourier.SurfaceRZFourier) -> mpl_figure.Figure:
-    fig, ax = plt.subplots()
+def plot_boundary(
+    boundary: surface_rz_fourier.SurfaceRZFourier,
+    ax: axes.Axes | None = None,
+) -> axes.Axes:
+    if ax is None:
+        _, _ax = plt.subplots()
+    else:
+        _ax = ax
     theta_phi = surface_utils.make_theta_phi_grid(
         n_theta=64,
         n_phi=5,
@@ -77,16 +86,16 @@ def plot_boundary(boundary: surface_rz_fourier.SurfaceRZFourier) -> mpl_figure.F
     )
     rz_points = surface_rz_fourier.evaluate_points_rz(boundary, theta_phi)
     for i in range(theta_phi.shape[1]):
-        ax.plot(
+        _ax.plot(
             rz_points[:, i, 0],
             rz_points[:, i, 1],
             label=f"{i}/4" + r"$\frac{\pi}{N_{\text{fp}}}$",
         )
-    ax.set_xlabel("R")
-    ax.set_ylabel("Z")
-    ax.set_aspect("equal")
-    ax.legend()
-    return fig
+    _ax.set_xlabel("R")
+    _ax.set_ylabel("Z")
+    _ax.set_aspect("equal")
+    _ax.legend()
+    return _ax
 
 
 def plot_boozer_surfaces(
@@ -122,3 +131,73 @@ def plot_boozer_surfaces(
             fig.savefig(save_dir_path / f"surface_plot_{i}.png")
 
     return figures
+
+
+def plot_flux_surfaces(
+    equilibrium: vmec_utils.VmecppWOut,
+    boundary: surface_rz_fourier.SurfaceRZFourier,
+    surfaces: list[float] | None = None,
+    ntheta: int = 128,
+    nphi: int = 4,
+) -> mpl_figure.Figure:
+    """Plot the shape of the selected flux surfaces.
+
+    Args:
+        equilibrium: the equilibrium object containing the flux surface data.
+        boundary: the plasma boundary object.
+        surfaces: the flux surface labels to plot.
+            If None, a default set of 10 surfaces evenly spaced between 0 and 1 will
+            be used. Defaults to None.
+        ntheta: the number of poloidal points. Defaults to 128.
+        nphi: the number of toroidal points. Defaults to 4.
+
+    Returns:
+        The figure with the flux surfaces plotted.
+    """
+    fig, ax = plt.subplots()
+
+    if surfaces is None:
+        surfaces = list(np.linspace(0, 1.0, 10))
+
+    # Shorthands
+    nfp = equilibrium.nfp
+    ns = equilibrium.ns
+    xm = equilibrium.xm
+    xn = equilibrium.xn
+
+    theta = np.linspace(0, 2 * np.pi, num=ntheta)
+    if boundary.is_stellarator_symmetric:
+        phi = np.linspace(0, np.pi / nfp, num=nphi)
+    else:
+        phi = np.linspace(0, 2 * np.pi / nfp, num=nphi, endpoint=False)
+    phi, theta = np.meshgrid(phi, theta)
+
+    s_full_grid = np.linspace(0, 1, num=ns)
+    angle = xm[:, None, None] * theta - xn[:, None, None] * phi
+
+    zmns = interpolate.interp1d(s_full_grid, equilibrium.zmns, kind="linear", axis=0)(
+        surfaces
+    )[..., None, None]
+    rmnc = interpolate.interp1d(s_full_grid, equilibrium.rmnc, kind="linear", axis=0)(
+        surfaces
+    )[..., None, None]
+
+    R = np.sum(rmnc * np.cos(angle), axis=1)
+    Z = np.sum(zmns * np.sin(angle), axis=1)
+
+    colors = mpl.colormaps["tab10"](np.linspace(0, 1, nphi))
+
+    for i in range(nphi):
+        normalized_phi = phi[0, i] / (2 * np.pi / nfp)
+        for j in range(len(surfaces)):
+            label = (
+                r"$\varphi=" + f"{normalized_phi:.2f}" + r"\frac{2\pi}{N_{fp}}$"
+                if j == 0
+                else None
+            )
+            ax.plot(R[j, :, i], Z[j, :, i], label=label, c=colors[i])
+    ax.set_aspect("equal")
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False, ncol=1)
+    ax.set_xlabel("R [m]")
+    ax.set_ylabel("Z [m]")
+    return fig
