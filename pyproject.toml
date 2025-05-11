@@ -28,7 +28,9 @@ dependencies = [
   "booz-xform==0.0.8",
   "ipython",
   "jaxtyping",
-  "numpy",
+  "matplotlib",
+  "nbformat",
+  "numpy==2.1.3",
   "plotly",
   "pydantic",
   "pymoo @ git+https://github.com/anyoptimization/pymoo.git@5da15ca440ee08a68d5b6c386013682296a37c1c",
@@ -82,3 +84,6 @@ line-length = 88
 ignore = [
   "F722",     # Disable 'forward-annotation-syntax-error' for jaxtyping compatibility, see https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
 ]
+
+[tool.cibuildwheel.linux]
+before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
