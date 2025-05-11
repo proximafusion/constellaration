@@ -1,7 +1,7 @@
 # ConStellaration: A dataset of QI-like stellarator plasma boundaries and optimization benchmarks
 
 ConStellaration is a dataset of diverse QI-like stellarator plasma boundary shapes, paired with their ideal-MHD equilibria and performance metrics.  
-The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/19).  
+The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/constellaration).  
 The repository contains a suite of tools and notebooks for exploring the dataset, including a forward model for plasma simulation and scoring functions for optimization evaluation.
 
 ## Installation
