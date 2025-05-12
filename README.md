@@ -33,6 +33,24 @@ To install the package directly from the GitHub repository without cloning, ensu
 pip install git+https://github.com/proximafusion/constellaration.git
 ```
 
+### Running with Docker
+
+If you prefer not to install system dependencies, you can use the provided Dockerfile to build a Docker image and run your scripts in a container.
+
+1. Build the Docker image:
+
+  ```bash
+  docker build -t constellaration .
+  ```
+
+2. Run your scripts by mounting a volume to the container:
+
+  ```bash
+  docker run --rm -v $(pwd):/workspace constellaration python relative/path/to/your_script.py
+  ```
+
+Replace `your_script.py` with the path to your script. The `$(pwd)` command mounts the current directory to `/workspace` inside the container.
+
 ## Explanation Notebook
 
 You can explore the functionalities of the repo through the [Boundary Explorer Notebook](./notebooks/boundary_explorer.ipynb).
