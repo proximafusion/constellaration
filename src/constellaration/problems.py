@@ -1,5 +1,4 @@
 import abc
-
 import jaxtyping as jt
 import numpy as np
 import pydantic
@@ -7,7 +6,7 @@ from pymoo.indicators import hv
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
 
-_DEFAULT_RELATIVE_TOLERANCE = 1e-2
+_DEFAULT_RELATIVE_TOLERANCE = 5e-2
 
 
 class _Problem(abc.ABC):
@@ -79,13 +78,13 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
             required edge rotational transform per field period.
     """  # noqa: E501
 
-    _aspect_ratio_upper_bound: pydantic.PositiveFloat = 5.0
+    _aspect_ratio_upper_bound: pydantic.PositiveFloat = 4.0
 
     _average_triangularity_upper_bound: float = -0.5
 
     _edge_rotational_transform_over_n_field_periods_lower_bound: (
         pydantic.PositiveFloat
-    ) = 0.2
+    ) = 0.3
 
     _does_it_require_qi: bool = False
 
