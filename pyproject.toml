@@ -51,12 +51,10 @@ Source = "https://github.com/proximafusion/constellaration"
 [tool.hatch.version]
 path = "src/constellaration/__about__.py"
 
-[tool.hatch.envs.types]
+[tool.hatch.envs.lint]
 extra-dependencies = [
-  "mypy>=1.0.0",
+  "ruff"
 ]
-[tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/constellaration tests}"
 
 [tool.coverage.run]
 source_pkgs = ["constellaration", "tests"]
@@ -81,9 +79,18 @@ exclude_lines = [
 line-length = 88
 
 [tool.ruff.lint]
+extend-select = [
+  "ARG",      # flake8-unused-arguments
+  "EXE",      # flake8-executable
+  "FURB",     # refurb
+  "G",        # flake8-logging-format
+  "ICN",      # flake8-import-conventions
+  "NPY",      # NumPy specific rules
+  "PD",       # pandas-vet
+  "PT",       # flake8-pytest-style
+  "PTH",      # flake8-use-pathlib
+  "YTT",      # flake8-2020
+]
 ignore = [
   "F722",     # Disable 'forward-annotation-syntax-error' for jaxtyping compatibility, see https://docs.kidger.site/jaxtyping/faq/#flake8-or-ruff-are-throwing-an-error
 ]
-
-[tool.cibuildwheel.linux]
-before-build = "yum install -y lapack-devel netcdf-devel hdf5-devel"
