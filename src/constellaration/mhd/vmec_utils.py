@@ -92,7 +92,9 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     spectral_width: jt.Float[np.ndarray, "..."]
     phips: jt.Float[np.ndarray, "..."]
     overr: jt.Float[np.ndarray, "..."]
-    bdotb: jt.Float[np.ndarray, "..."] | None = None
+    # For compatibility with wout results produced by
+    # vmecpp versions <0.4.0
+    bdotb: jt.Float[np.ndarray, "..."] = np.array([])
     jdotb: jt.Float[np.ndarray, "..."]
     bdotgradv: jt.Float[np.ndarray, "..."]
     DMerc: jt.Float[np.ndarray, "..."]
