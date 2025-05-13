@@ -1,4 +1,5 @@
 import abc
+
 import jaxtyping as jt
 import numpy as np
 import pydantic
@@ -303,7 +304,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
                 self._log10_qi_upper_bound,
                 self._edge_magnetic_mirror_ratio_upper_bound,
                 self._flux_compression_in_regions_of_bad_curvature_upper_bound,
-                self._vacuum_well_lower_bound,
+                np.maximum(1e-1, self._vacuum_well_lower_bound),
             ]
         )
         return constraint_violations / np.abs(constraint_targets)
