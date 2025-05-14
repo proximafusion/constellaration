@@ -36,8 +36,9 @@ def combine_figures_side_by_side(
     ipd.display(combined_img)
 
 
-def combine_plotly_figures_side_by_side(fig1: go.Figure, fig2: go.Figure) -> go.Figure:
-    """Combines two Plotly 3D figures into a single side-by-side figure."""
+def combine_plotly_figures_side_by_side(fig1: go.Figure, fig2: go.Figure) -> None:
+    """Combines two Plotly 3D figures into a single side-by-side static image and
+    displays the result."""
     fig = plotly_subplots.make_subplots(
         rows=1,
         cols=2,
@@ -49,7 +50,8 @@ def combine_plotly_figures_side_by_side(fig1: go.Figure, fig2: go.Figure) -> go.
         fig.add_trace(trace, row=1, col=2)
     fig.update_layout(width=1000, height=500, showlegend=False)
 
-    return fig
+    img_bytes = fig.to_image(format="png")
+    ipd.display(ipd.Image(data=img_bytes))
 
 
 def print_dicts_side_by_side(dict1: dict[str, Any], dict2: dict[str, Any]) -> None:
