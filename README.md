@@ -12,7 +12,9 @@ The repository contains a suite of tools and notebooks for exploring the dataset
 
 ## Installation
 
-The system dependency `libnetcdf-dev` is required for running the forward model. Please ensure it is installed before proceeding, by running:
+The following instructions have been tested on **Ubuntu 22.04**. Other platforms may require additional steps and have not been validated.
+
+The system dependency `libnetcdf-dev` is required for running the forward model. On Ubuntu, please ensure it is installed before proceeding, by running:
 
   ```bash
   sudo apt-get install libnetcdf-dev
