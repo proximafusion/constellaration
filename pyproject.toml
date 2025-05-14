@@ -7,7 +7,7 @@ name = "constellaration"
 dynamic = ["version"]
 description = 'Code for analyzing and evaluating stellarator plasma shapes'
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = "MIT"
 keywords = []
 authors = [
@@ -16,7 +16,6 @@ authors = [
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -33,11 +32,11 @@ dependencies = [
   "numpy==2.1.3",
   "plotly",
   "pydantic",
-  "pymoo @ git+https://github.com/anyoptimization/pymoo.git@5da15ca440ee08a68d5b6c386013682296a37c1c",
-  "qicna @ git+https://github.com/rogeriojorge/pyQIC.git@d130f6fa7de4ba8fd039f5c5ac42f553a2a292fe",
+  "pymoo==0.6.1.3",
+  "qicna==0.3.4",
   "scipy",
   "simsopt==1.8.1",
-  "vmecpp==0.4.1"
+  "vmecpp==0.4.2",
 ]
 
 [tool.hatch.metadata]
@@ -58,6 +57,14 @@ extra-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.hatch.build]
+packages = ["src/constellaration"]
+include = [
+  "src/constellaration/**",
+  "README.md",
+  "LICENSE",
+]
 
 [tool.coverage.run]
 source_pkgs = ["constellaration", "tests"]
