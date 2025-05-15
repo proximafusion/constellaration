@@ -20,6 +20,16 @@ The system dependency `libnetcdf-dev` is required for running the forward model.
   sudo apt-get install libnetcdf-dev
   ```
 
+### Install from PyPI
+
+The package can be installed directly from PyPI:
+
+```bash
+pip install constellaration
+```
+
+### Install by cloning the repository
+
 1. Clone the repository:
 
   ```bash
@@ -32,14 +42,6 @@ The system dependency `libnetcdf-dev` is required for running the forward model.
   ```bash
   pip install .
   ```
-
-### Install directly from GitHub
-
-To install the package directly from the GitHub repository without cloning, ensure the system dependency is installed first, then run:
-
-```bash
-pip install git+https://github.com/proximafusion/constellaration.git
-```
 
 ### Running with Docker
 
@@ -61,7 +63,7 @@ Replace `your_script.py` with the path to your script. The `$(pwd)` command moun
 
 ## Explanation Notebook
 
-You can explore the functionalities of the repo through the [Boundary Explorer Notebook](./notebooks/boundary_explorer.ipynb).
+You can explore the functionalities of the repo through the [Boundary Explorer Notebook](https://github.com/proximafusion/constellaration/blob/main/notebooks/boundary_explorer.ipynb).
 
 ## Citation
 
