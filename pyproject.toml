@@ -27,6 +27,7 @@ dependencies = [
   "booz-xform==0.0.8",
   "ipython",
   "jaxtyping",
+  "kaleido",
   "matplotlib==3.9.2",
   "nbformat",
   "numpy==2.1.3",
