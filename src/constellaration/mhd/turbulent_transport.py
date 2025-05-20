@@ -3,8 +3,9 @@ from typing import Any, cast
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from constellaration.mhd import vmec_utils
 from simsopt import mhd
+
+from constellaration.mhd import vmec_utils
 
 
 class IdealMHDTurbulentTransportMetricsSettings(

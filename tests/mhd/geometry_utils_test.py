@@ -1,4 +1,5 @@
 import numpy as np
+
 from constellaration import initial_guess
 from constellaration.mhd import geometry_utils
 

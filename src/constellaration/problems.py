@@ -4,6 +4,7 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 from pymoo.indicators import hv
+
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
 

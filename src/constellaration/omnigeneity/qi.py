@@ -3,8 +3,9 @@ import functools
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from constellaration.boozer import boozer
 from scipy import interpolate
+
+from constellaration.boozer import boozer
 
 _MACHINE_PRECISION = float(np.finfo(float).eps)
 

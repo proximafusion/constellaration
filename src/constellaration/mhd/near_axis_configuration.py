@@ -5,9 +5,10 @@ import numpy as np
 import pydantic
 import qic
 import qic.util
-from constellaration.geometry import surface_rz_fourier
 from scipy import optimize
 from simsopt import geo
+
+from constellaration.geometry import surface_rz_fourier
 
 NpOrJaxArray = np.ndarray | jt.Array
 _MAX_VMEC_N_MODES = 100

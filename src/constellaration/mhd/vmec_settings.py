@@ -1,6 +1,7 @@
 from typing import Literal
 
 import pydantic
+
 from constellaration.geometry import surface_rz_fourier, surface_utils
 
 

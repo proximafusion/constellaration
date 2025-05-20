@@ -1,12 +1,9 @@
 import pathlib
 
 import vmecpp
+
 from constellaration.geometry import surface_rz_fourier
-from constellaration.mhd import (
-    ideal_mhd_parameters,
-    vmec_settings,
-    vmec_utils,
-)
+from constellaration.mhd import ideal_mhd_parameters, vmec_settings, vmec_utils
 
 
 def to_vmec2000_wout_file(

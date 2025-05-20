@@ -7,11 +7,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import axes
 from plotly import graph_objects as go
+from scipy import interpolate
+from simsopt import mhd
+
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import surface_rz_fourier, surface_utils
 from constellaration.mhd import vmec_utils
-from scipy import interpolate
-from simsopt import mhd
 
 
 def plot_surface(

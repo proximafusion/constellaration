@@ -1,8 +1,9 @@
 import jaxtyping as jt
 import numpy as np
+from scipy import optimize, special
+
 from constellaration.geometry import surface_rz_fourier, surface_utils
 from constellaration.mhd import vmec_utils
-from scipy import optimize, special
 
 
 def max_elongation(

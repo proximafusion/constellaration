@@ -1,6 +1,7 @@
+from simsopt import geo
+
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import near_axis_configuration
-from simsopt import geo
 
 _EDGE_IOTA_OVER_N_FIELD_PERIODS_SCALING_PARAMETERS = (0.4, 10.0)
 

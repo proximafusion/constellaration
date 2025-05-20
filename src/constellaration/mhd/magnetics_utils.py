@@ -1,5 +1,6 @@
 import jaxtyping as jt
 import numpy as np
+
 from constellaration.geometry import radial_profile, surface_utils
 from constellaration.mhd import vmec_utils
 

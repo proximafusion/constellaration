@@ -6,15 +6,12 @@ import jaxtyping as jt
 import numpy as np
 import pydantic
 import vmecpp
-from constellaration.geometry import surface_rz_fourier
-from constellaration.mhd import (
-    flux_power_series,
-    ideal_mhd_parameters,
-    vmec_settings,
-)
 from scipy import interpolate
 from simsopt import mhd
 from vmecpp import _pydantic_numpy as pydantic_numpy
+
+from constellaration.geometry import surface_rz_fourier
+from constellaration.mhd import flux_power_series, ideal_mhd_parameters, vmec_settings
 
 
 # TODO(mariap): Remove this and use the class from vmecpp

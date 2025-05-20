@@ -1,5 +1,6 @@
 import numpy as np
 import pydantic
+
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import flux_power_series
 

@@ -1,8 +1,9 @@
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from constellaration.mhd import vmec_utils
 from simsopt import mhd
+
+from constellaration.mhd import vmec_utils
 
 RADIAL_PROFILE = jt.Float[np.ndarray, " n_flux_surfaces"]
 FOURIER_MODES = jt.Integer[np.ndarray, " n_fourier_modes"]
