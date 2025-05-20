@@ -521,6 +521,27 @@ def set_max_mode_numbers(
     )
 
 
+def compute_infinity_norm_spectrum_scaling_fun(
+    poloidal_modes: jt.Int[np.ndarray, " n_modes"],
+    toroidal_modes: jt.Int[np.ndarray, " n_modes"],
+    alpha: float,
+) -> jt.Float[np.ndarray, " n_modes"]:
+    r"""Compute a scale for SurfaceRZFourier Fourier coefficients based on a L-infinity
+    norm of the modes.
+
+    The spectrum scaling is computed as:
+
+    ... math::
+
+        e^{-alpha * max(|m|, |n|)}
+
+    where `alpha` is a constant that determines the scaling of the Fourier
+    spectrum.
+    """
+    infinity_norm = np.maximum(np.abs(poloidal_modes), np.abs(toroidal_modes))
+    return np.exp(-1.0 * alpha * infinity_norm)
+
+
 def _compute_angle(
     surface: SurfaceRZFourier,
     theta_phi: jt.Float[np.ndarray, "*dims 2"],
