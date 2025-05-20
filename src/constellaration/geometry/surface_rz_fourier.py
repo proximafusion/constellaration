@@ -580,6 +580,158 @@ def build_mask(
     )
 
 
+def get_named_mode_values(
+    boundary: SurfaceRZFourier,
+) -> dict[str, float]:
+    """Extract the Fourier mode values from a SurfaceRZFourier object and return them as
+    a dictionary with named keys.
+
+    Args:
+        boundary: The boundary to extract the mode values from.
+
+    Returns:
+        A dictionary with the mode values as floats, indexed by the mode names.
+
+    Example:
+    ```python
+    boundary = rz_fourier_types.SurfaceRZFourier(
+        r_cos = np.array([[0.0, 1.0, 3.0], [4.0, 5.0, 6.0]]),
+        z_sin = np.array([[0.0, 0.0, 0.1], [10.0, 11.0, 12.0]]),
+        n_field_periods = 2,
+        is_stellarator_symmetric = True,
+    )
+    mode_values = get_named_mode_values(boundary)
+
+    print(mode_values)
+
+    # Returns:
+    # {'r_cos(0, 0)': 1.0,
+    # 'r_cos(0, 1)': 3.0,
+    # 'r_cos(1, -1)': 4.0,
+    # 'r_cos(1, 0)': 5.0,
+    # 'r_cos(1, 1)': 6.0,
+    # 'z_sin(0, 1)': 0.1,
+    # 'z_sin(1, -1)': 10.0,
+    # 'z_sin(1, 0)': 11.0,
+    # 'z_sin(1, 1)': 12.0}
+    ```
+    """
+
+    def _get_m_n_from_row_col(row: int, col: int) -> tuple[int, int]:
+        return (
+            int(boundary.poloidal_modes[row, col]),
+            int(boundary.toroidal_modes[row, col]),
+        )
+
+    # r_cos
+    mode_values = {
+        f"r_cos{_get_m_n_from_row_col(row, col)}": boundary.r_cos[row, col]
+        for row in range(boundary.n_poloidal_modes)
+        for col in range(boundary.n_toroidal_modes)
+        if not (
+            boundary.poloidal_modes[row, col] == 0
+            and boundary.toroidal_modes[row, col] < 0
+            and boundary.is_stellarator_symmetric
+        )
+    }
+    # z_sine
+    mode_values.update(
+        {
+            f"z_sin{_get_m_n_from_row_col(row, col)}": boundary.z_sin[row, col]
+            for row in range(boundary.n_poloidal_modes)
+            for col in range(boundary.n_toroidal_modes)
+            if not (
+                boundary.poloidal_modes[row, col] == 0
+                and boundary.toroidal_modes[row, col] <= 0
+                and boundary.is_stellarator_symmetric
+            )
+        }
+    )
+    if boundary.r_sin is not None:
+        # r_sine
+        mode_values.update(
+            {
+                f"r_sin{_get_m_n_from_row_col(row, col)}": boundary.r_sin[row, col]
+                for row in range(boundary.n_poloidal_modes)
+                for col in range(boundary.n_toroidal_modes)
+            }
+        )
+    if boundary.z_cos is not None:
+        # z_cosine
+        mode_values.update(
+            {
+                f"z_cos{_get_m_n_from_row_col(row, col)}": boundary.z_cos[row, col]
+                for row in range(boundary.n_poloidal_modes)
+                for col in range(boundary.n_toroidal_modes)
+            }
+        )
+
+    return mode_values
+
+
+def boundary_from_named_modes(
+    named_fourier_modes: dict[str, float],
+    is_stellarator_symmetric: bool,
+    n_field_periods: int,
+) -> SurfaceRZFourier:
+    """Constructs a SurfaceRZFourier object from named Fourier modes.
+
+    Args:
+        named_fourier_modes: A dictionary where keys are named Fourier modes
+            (e.g., "r_cos(0, 0)", "z_sin(1, 2)") and values are the Fourier
+            coefficients.
+        is_stellarator_symmetric: Indicates whether the surface has stellarator
+            symmetry.
+        n_field_periods: The number of toroidal field periods of the surface.
+
+    Returns:
+        A SurfaceRZFourier object reconstructed from the named Fourier modes.
+    """
+    # Extract maximum poloidal and toroidal mode indices from the keys
+    max_m = max(int(key.split("(")[1].split(",")[0]) for key in named_fourier_modes)
+    max_n = max(
+        abs(int(key.split("(")[1].split(",")[1][:-1])) for key in named_fourier_modes
+    )
+
+    # Initialize Fourier coefficient arrays
+    r_cos = np.zeros((max_m + 1, 2 * max_n + 1))
+    z_sin = np.zeros((max_m + 1, 2 * max_n + 1))
+    r_sin = None
+    z_cos = None
+
+    if not is_stellarator_symmetric:
+        r_sin = np.zeros((max_m + 1, 2 * max_n + 1))
+        z_cos = np.zeros((max_m + 1, 2 * max_n + 1))
+
+    # Populate Fourier coefficient arrays
+    for key, value in named_fourier_modes.items():
+        mode_type, indices = key.split("(")
+        m, n = map(int, indices[:-1].split(","))
+        n_shifted = n + max_n  # Adjust n index to match array dimensions
+
+        if mode_type == "r_cos":
+            r_cos[m, n_shifted] = value
+        elif mode_type == "z_sin":
+            z_sin[m, n_shifted] = value
+        elif (
+            mode_type == "r_sin" and not is_stellarator_symmetric and r_sin is not None
+        ):
+            r_sin[m, n_shifted] = value
+        elif (
+            mode_type == "z_cos" and not is_stellarator_symmetric and z_cos is not None
+        ):
+            z_cos[m, n_shifted] = value
+
+    return SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        r_sin=r_sin,
+        z_cos=z_cos,
+        n_field_periods=n_field_periods,
+        is_stellarator_symmetric=is_stellarator_symmetric,
+    )
+
+
 def _compute_angle(
     surface: SurfaceRZFourier,
     theta_phi: jt.Float[np.ndarray, "*dims 2"],

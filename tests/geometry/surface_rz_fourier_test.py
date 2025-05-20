@@ -161,3 +161,294 @@ def _make_surface(
     r_cos = np.zeros(shape)
     z_sin = np.zeros(shape)
     return surface_rz_fourier.SurfaceRZFourier(r_cos=r_cos, z_sin=z_sin)
+
+
+def test_get_named_mode_values_stellarator_symmetric():
+    """Test get_named_mode_values with a stellarator symmetric surface."""
+    # Create a SurfaceRZFourier object with stellarator symmetry
+    r_cos = np.array(
+        [
+            [0.0, 1.0, 0.5],
+            [0.0, 0.2, 0.1],
+            [0.0, 0.05, 0.02],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.1],
+            [0.0, 0.2, 0.05],
+            [0.0, 0.03, 0.01],
+        ]
+    )
+
+    # Ensure coefficients satisfy stellarator symmetry constraints
+    # For m=0 and n<0, r_cos[0, n<0] must be zero (already zero)
+    # For m=0 and n<=0, z_sin[0, n<=0] must be zero (already zero)
+
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=2,
+        is_stellarator_symmetric=True,
+    )
+
+    mode_values = surface_rz_fourier.get_named_mode_values(surface)
+
+    expected_mode_values = {
+        # r_cos modes (excluding m=0, n<0)
+        "r_cos(0, 0)": 1.0,
+        "r_cos(0, 1)": 0.5,
+        "r_cos(1, -1)": 0.0,
+        "r_cos(1, 0)": 0.2,
+        "r_cos(1, 1)": 0.1,
+        "r_cos(2, -1)": 0.0,
+        "r_cos(2, 0)": 0.05,
+        "r_cos(2, 1)": 0.02,
+        # z_sin modes (excluding m=0, n<=0)
+        "z_sin(0, 1)": 0.1,
+        "z_sin(1, -1)": 0.0,
+        "z_sin(1, 0)": 0.2,
+        "z_sin(1, 1)": 0.05,
+        "z_sin(2, -1)": 0.0,
+        "z_sin(2, 0)": 0.03,
+        "z_sin(2, 1)": 0.01,
+    }
+
+    assert mode_values == expected_mode_values
+
+
+def test_get_named_mode_values_zero_coefficients():
+    """Test get_named_mode_values with zero coefficients."""
+    # Create a SurfaceRZFourier object with zero coefficients
+    r_cos = np.zeros((2, 3))  # Shape (2, 3)
+    z_sin = np.zeros((2, 3))  # Shape (2, 3)
+
+    # Ensure coefficients satisfy stellarator symmetry constraints
+    # r_cos[0, n<0] and z_sin[0, n<=0] are zeros
+
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    mode_values = surface_rz_fourier.get_named_mode_values(surface)
+
+    expected_mode_values = {
+        "r_cos(0, 0)": 0.0,
+        "r_cos(0, 1)": 0.0,
+        "r_cos(1, -1)": 0.0,
+        "r_cos(1, 0)": 0.0,
+        "r_cos(1, 1)": 0.0,
+        "z_sin(0, 1)": 0.0,
+        "z_sin(1, -1)": 0.0,
+        "z_sin(1, 0)": 0.0,
+        "z_sin(1, 1)": 0.0,
+    }
+
+    assert mode_values == expected_mode_values
+
+
+def test_get_named_mode_values_single_mode():
+    """Test get_named_mode_values with a single Fourier mode."""
+    r_cos = np.array([[1.0]])  # Shape (1, 1)
+    z_sin = np.array([[0.0]])  # Shape (1, 1)
+
+    # Ensure coefficients satisfy stellarator symmetry constraints
+    # Only m=0, n=0 mode
+
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    mode_values = surface_rz_fourier.get_named_mode_values(surface)
+
+    expected_mode_values = {
+        "r_cos(0, 0)": 1.0,
+    }
+
+    assert mode_values == expected_mode_values
+
+
+def test_get_named_mode_values_large_modes():
+    """Test get_named_mode_values with larger mode indices."""
+    # Coefficient arrays must satisfy stellarator symmetry constraints
+    # We'll create arrays with zeros where required
+
+    # Number of poloidal and toroidal modes
+    n_poloidal_modes = 5  # m from 0 to 4
+    n_toroidal_modes = 9  # n from -4 to 4 (must be odd)
+
+    # Initialize arrays with zeros
+    r_cos = np.zeros((n_poloidal_modes, n_toroidal_modes))
+    z_sin = np.zeros((n_poloidal_modes, n_toroidal_modes))
+
+    # Set random values where allowed
+    max_toroidal_mode = (n_toroidal_modes - 1) // 2
+
+    for m in range(n_poloidal_modes):
+        rng = np.random.default_rng()
+        for n_idx, n in enumerate(range(-max_toroidal_mode, max_toroidal_mode + 1)):
+            # Skip r_cos when m=0 and n<0
+            if not (m == 0 and n < 0):
+                r_cos[m, n_idx] = rng.random()
+            # Skip z_sin when m=0 and n<=0
+            if not (m == 0 and n <= 0):
+                z_sin[m, n_idx] = rng.random()
+
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=2,
+        is_stellarator_symmetric=True,
+    )
+
+    mode_values = surface_rz_fourier.get_named_mode_values(surface)
+
+    expected_keys = []
+    for m in range(n_poloidal_modes):
+        for n_idx, n in enumerate(range(-max_toroidal_mode, max_toroidal_mode + 1)):
+            if not (m == 0 and n < 0):
+                expected_keys.append(f"r_cos({m}, {n})")
+            if not (m == 0 and n <= 0):
+                expected_keys.append(f"z_sin({m}, {n})")
+
+    assert set(mode_values.keys()) == set(expected_keys)
+
+
+def test_get_named_mode_values_with_negative_toroidal_modes():
+    """Test get_named_mode_values correctly handles negative toroidal modes."""
+    r_cos = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.5, 0.2],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.1],
+            [0.0, 0.05, 0.02],
+        ]
+    )
+
+    # Ensure coefficients satisfy stellarator symmetry constraints
+    # r_cos[0, n<0] and z_sin[0, n<=0] are zeros
+
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    mode_values = surface_rz_fourier.get_named_mode_values(surface)
+
+    expected_mode_values = {
+        "r_cos(0, 0)": 0.0,
+        "r_cos(0, 1)": 1.0,
+        "r_cos(1, -1)": 0.0,
+        "r_cos(1, 0)": 0.5,
+        "r_cos(1, 1)": 0.2,
+        "z_sin(0, 1)": 0.1,
+        "z_sin(1, -1)": 0.0,
+        "z_sin(1, 0)": 0.05,
+        "z_sin(1, 1)": 0.02,
+    }
+
+    assert mode_values == expected_mode_values
+
+
+# Tests for boundary_from_named_modes
+
+
+def test_boundary_from_named_modes_stellarator_symmetric():
+    """Test reconstruction of a stellarator symmetric SurfaceRZFourier object."""
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    n_field_periods = 2
+    is_stellarator_symmetric = True
+
+    surface = surface_rz_fourier.boundary_from_named_modes(
+        named_modes, is_stellarator_symmetric, n_field_periods
+    )
+
+    assert surface.n_field_periods == n_field_periods
+    assert surface.is_stellarator_symmetric
+    assert np.allclose(surface.r_cos[0, 1], 1.0)  # r_cos(0, 0)
+    assert np.allclose(surface.r_cos[1, 2], 0.5)  # r_cos(1, 1)
+    assert np.allclose(surface.z_sin[0, 2], 0.3)  # z_sin(0, 1)
+    assert np.allclose(surface.z_sin[1, 2], 0.7)  # z_sin(1, 1)
+    assert surface.r_sin is None
+    assert surface.z_cos is None
+
+
+def test_boundary_from_named_modes_non_symmetric():
+    """Test reconstruction of a non-stellarator symmetric SurfaceRZFourier object."""
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": 0.4,
+        "r_sin(1, 1)": 0.6,
+        "z_sin(1, -1)": 0.3,
+        "z_cos(0, 0)": 0.9,
+    }
+    n_field_periods = 3
+    is_stellarator_symmetric = False
+
+    surface = surface_rz_fourier.boundary_from_named_modes(
+        named_modes, is_stellarator_symmetric, n_field_periods
+    )
+
+    assert surface.n_field_periods == n_field_periods
+    assert not surface.is_stellarator_symmetric
+    assert np.allclose(surface.r_cos[0, 1], 1.0)  # r_cos(0, 0)
+    assert np.allclose(surface.r_cos[1, 0], 0.4)  # r_cos(1, -1)
+    assert surface.r_sin is not None
+    assert np.allclose(surface.r_sin[1, 2], 0.6)  # r_sin(1, 1)
+    assert np.allclose(surface.z_sin[1, 0], 0.3)  # z_sin(1, -1)
+    assert surface.z_cos is not None
+    assert np.allclose(surface.z_cos[0, 1], 0.9)  # z_cos(0, 0)
+
+
+def test_boundary_from_named_modes_round_trip_get_boundary_named_modes():
+    """Test round trip: Surface -> Named Modes -> Surface."""
+    r_cos = np.array([[1.0, 0.0, 0.5], [0.0, 0.4, 0.0]])
+    z_sin = np.array([[0.0, 0.3, 0.0], [0.0, 0.0, 0.7]])
+    r_sin = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 0.6]])
+    z_cos = np.array([[0.9, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    n_field_periods = 2
+    is_stellarator_symmetric = False
+
+    original_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        r_sin=r_sin,
+        z_cos=z_cos,
+        n_field_periods=n_field_periods,
+        is_stellarator_symmetric=is_stellarator_symmetric,
+    )
+
+    named_modes = surface_rz_fourier.get_named_mode_values(original_surface)
+    reconstructed_surface = surface_rz_fourier.boundary_from_named_modes(
+        named_modes, is_stellarator_symmetric, n_field_periods
+    )
+    assert np.allclose(original_surface.r_cos, reconstructed_surface.r_cos)
+    assert np.allclose(original_surface.z_sin, reconstructed_surface.z_sin)
+    assert original_surface.r_sin is not None
+    assert reconstructed_surface.r_sin is not None
+    assert np.allclose(original_surface.r_sin, reconstructed_surface.r_sin)
+    assert original_surface.z_cos is not None
+    assert reconstructed_surface.z_cos is not None
+    assert np.allclose(original_surface.z_cos, reconstructed_surface.z_cos)
+    assert original_surface.n_field_periods == reconstructed_surface.n_field_periods
+    assert (
+        original_surface.is_stellarator_symmetric
+        == reconstructed_surface.is_stellarator_symmetric
+    )
