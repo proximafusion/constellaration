@@ -1,6 +1,7 @@
 import jaxtyping as jt
 import numpy as np
 import pydantic
+from jax import numpy as jnp
 from simsopt import geo
 from typing_extensions import Self
 from vmecpp import _pydantic_numpy as pydantic_numpy
@@ -540,6 +541,43 @@ def compute_infinity_norm_spectrum_scaling_fun(
     """
     infinity_norm = np.maximum(np.abs(poloidal_modes), np.abs(toroidal_modes))
     return np.exp(-1.0 * alpha * infinity_norm)
+
+
+def build_mask(
+    surface: SurfaceRZFourier,
+    max_poloidal_mode: int,
+    max_toroidal_mode: int,
+) -> jt.PyTree[bool]:
+    """Build an almost rectangular, boolean mask for Fourier coefficients of surfaces.
+
+    Note: Almost rectangular because the coefficients where poloidal indices are zero
+     AND toroidal indices are non-positive are always masked out.
+
+    Args:
+        surface: The surface to derive the mask from, based on its modes.
+        max_poloidal_mode: The maximum poloidal mode to include.
+        max_toroidal_mode: The maximum toroidal mode to include.
+
+    Returns:
+        A surface-like pytree with booleans for Fourier coefficients.
+    """
+    if not surface.is_stellarator_symmetric:
+        raise ValueError("Masks for non-stellarator-symmetric surfaces not supported.")
+    fourier_coefficients_mask = jnp.asarray(
+        (surface.poloidal_modes > 0)
+        | ((surface.poloidal_modes == 0) & (surface.toroidal_modes >= 1))
+    )
+    fourier_coefficients_mask &= (surface.poloidal_modes <= max_poloidal_mode) & (
+        np.abs(surface.toroidal_modes) <= max_toroidal_mode
+    )
+    return surface.model_copy(
+        update=dict(
+            r_cos=fourier_coefficients_mask,
+            z_sin=fourier_coefficients_mask,
+            r_sin=False,
+            z_cos=False,
+        ),
+    )
 
 
 def _compute_angle(
