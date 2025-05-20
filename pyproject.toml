@@ -51,6 +51,13 @@ Source = "https://github.com/proximafusion/constellaration"
 [tool.hatch.version]
 path = "src/constellaration/__about__.py"
 
+[project.optional-dependencies]
+test = ["pytest"]
+lint = ["pre-commit"]
+
+[tool.hatch.envs.test]
+dependencies = ["pytest"]
+
 [tool.hatch.envs.lint]
 extra-dependencies = [
   "ruff"

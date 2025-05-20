@@ -6,8 +6,8 @@
 
 # ConStellaration: A dataset of QI-like stellarator plasma boundaries and optimization benchmarks
 
-ConStellaration is a dataset of diverse QI-like stellarator plasma boundary shapes, paired with their ideal-MHD equilibria and performance metrics.  
-The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/constellaration).  
+ConStellaration is a dataset of diverse QI-like stellarator plasma boundary shapes, paired with their ideal-MHD equilibria and performance metrics.
+The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/constellaration).
 The repository contains a suite of tools and notebooks for exploring the dataset, including a forward model for plasma simulation and scoring functions for optimization evaluation.
 
 ## Installation
@@ -64,6 +64,35 @@ Replace `your_script.py` with the path to your script. The `$(pwd)` command moun
 ## Explanation Notebook
 
 You can explore the functionalities of the repo through the [Boundary Explorer Notebook](https://github.com/proximafusion/constellaration/blob/main/notebooks/boundary_explorer.ipynb).
+
+## Contributing
+
+To be able to run unit tests, please install the test and lint environment:
+
+```bash
+pip install -e ".[test,lint]"
+```
+### Linting
+
+We use **pre-commit** to automatically lint and format code before each commit. Linting is static code analysis that catches style issues and potential errors. If any **hook** fails, the commit will be blocked until you fix the reported issues and re-stage your changes.
+
+ Install the hook (once per clone):
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+You can run all pre-commit hooks against all files like this:
+```bash
+pre-commit run --all-files
+```
+### Unit tests
+
+To locally run all unit tests (while in the top directory of the repo)
+
+```bash
+pytest .
+```
 
 ## Citation
 
