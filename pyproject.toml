@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
   "booz-xform==0.0.8",
+  "desc-opt",
   "ipython",
   "ipykernel",
   "interpax",
