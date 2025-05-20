@@ -1,8 +1,13 @@
+import dataclasses
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Callable, TypeVar
 
+import jax
+import jax.numpy as jnp
 import jax.tree_util as jtu
 import pydantic
+
+from constellaration.utils.types import NpOrJaxArray
 
 
 def pydantic_flatten(
@@ -92,3 +97,116 @@ def register_pydantic_data(cls: type, meta_fields: list[str] | None = None) -> t
     )
 
     return cls
+
+
+PytreeT = TypeVar("PytreeT")
+LeafT = TypeVar("LeafT")
+
+
+@dataclasses.dataclass
+class _LeafInfo:
+    leaf: NpOrJaxArray | float
+    mask: NpOrJaxArray | None
+    is_scalar: bool
+
+    @property
+    def is_masked(self) -> bool:
+        return self.mask is not None
+
+
+class _UnravelFn:
+    """A picklable callable that reconstructs a pytree from a flat parameter vector.
+
+    It stores all necessary info (the original pytree treedef and a list of per-leaf
+    info) to reassemble the structure.
+    """
+
+    _leaves_info: list[_LeafInfo]
+    _treedef: jax.tree_util.PyTreeDef
+
+    def __init__(
+        self, leaves_info: list[_LeafInfo], treedef: jax.tree_util.PyTreeDef
+    ) -> None:
+        self._leaves_info = leaves_info
+        self._treedef = treedef
+
+    def __call__(self, flat: NpOrJaxArray) -> Any:
+        new_leaves: list[NpOrJaxArray | float] = []
+        pos = 0
+        for leaf_info in self._leaves_info:
+            if leaf_info.is_masked:
+                assert leaf_info.mask is not None
+                # Determine how many entries were extracted for this leaf.
+                n_true = int(leaf_info.mask.sum())
+                segment = flat[pos : pos + n_true]
+                pos += n_true
+                # Find the indices where the mask is True.
+                idx = jnp.nonzero(leaf_info.mask)
+                if leaf_info.is_scalar:
+                    # If the leaf is a scalar, `segment` has a single entry.
+                    new_leaf = segment[0].item()
+                else:
+                    assert isinstance(leaf_info.leaf, NpOrJaxArray)
+                    # Replace the masked positions with the new parameters.
+                    new_leaf = jnp.asarray(leaf_info.leaf).at[idx].set(segment)
+                new_leaves.append(new_leaf)
+            else:
+                new_leaves.append(leaf_info.leaf)
+        if pos != len(flat):
+            raise ValueError(
+                f"Expected to consume {len(flat)} values, but only consumed {pos}."
+            )
+        return jax.tree_util.tree_unflatten(self._treedef, new_leaves)
+
+
+def mask_and_ravel(
+    pytree: PytreeT,
+    mask: PytreeT,
+) -> tuple[NpOrJaxArray, Callable[[NpOrJaxArray], PytreeT]]:
+    """Ravel a pytree but only include entries where the corresponding mask is True.
+    Returns a 1D array and a picklable unravel function that reconstructs the pytree
+    by inserting new values into the masked locations while keeping other
+    entries unchanged.
+
+    Args:
+        pytree: The pytree to be flattened.
+        mask: A pytree of booleans with the same structure as `pytree`. True indicates
+            the entries to be flattened.
+
+    Returns:
+        A tuple of the flat array and the unravel function.
+    """
+
+    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+    mask_leaves, _ = jax.tree_util.tree_flatten(mask)
+
+    flat_segments: list[NpOrJaxArray] = []
+    leaves_info: list[_LeafInfo] = []
+    for leaf, leaf_mask in zip(leaves, mask_leaves):
+        if isinstance(leaf_mask, NpOrJaxArray) and leaf_mask.dtype == jnp.bool_:
+            selected = leaf[leaf_mask]
+            flat_segments.append(jnp.atleast_1d(selected.ravel()))
+            leaves_info.append(_LeafInfo(mask=leaf_mask, leaf=leaf, is_scalar=False))
+        elif isinstance(leaf_mask, float):
+            if leaf_mask not in (0.0, 1.0):
+                raise ValueError("Only 0.0 and 1.0 are supported as float masks.")
+            is_scalar = True
+            if leaf_mask == 1.0:
+                flat_segments.append(jnp.atleast_1d(leaf))
+                leaves_info.append(
+                    _LeafInfo(mask=jnp.array([True]), leaf=leaf, is_scalar=is_scalar)
+                )
+            else:
+                leaves_info.append(_LeafInfo(leaf=leaf, mask=None, is_scalar=is_scalar))
+        else:
+            raise ValueError(
+                f"Unsupported mask type {type(leaf_mask)} for leaf {leaf}."
+            )
+
+    if flat_segments:
+        flat = jnp.concatenate(flat_segments)
+    else:
+        flat = jnp.array([])
+
+    unravel_fn = _UnravelFn(leaves_info, treedef)
+    return flat, unravel_fn
