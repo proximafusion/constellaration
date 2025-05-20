@@ -15,15 +15,6 @@ repos:
     hooks:
     -   id: shellcheck
         args: ["--severity=warning"]
--   repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: 'v17.0.2'
-    hooks:
-    -   id: clang-format
-        types_or: [c++, c, cuda]
--   repo: https://github.com/pocc/pre-commit-hooks
-    rev: v1.3.5
-    hooks:
-    -   id: cpplint
 -   repo: https://github.com/pycqa/isort
     rev: 5.11.5
     hooks:
@@ -33,10 +24,9 @@ repos:
     rev: v0.9.6
     hooks:
       - id: ruff
-        args: [ --fix, --ignore, "F722"]
+        args: [ --fix]
 -   repo: https://github.com/psf/black-pre-commit-mirror
     rev: 23.3.0
     hooks:
       - id: black
         language_version: python3.10
-        args: [--line-length, "88"]
