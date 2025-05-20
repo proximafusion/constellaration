@@ -4,6 +4,7 @@ import tempfile
 
 import jaxtyping as jt
 import numpy as np
+import pydantic
 import vmecpp
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import (
@@ -71,8 +72,15 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     fsqz: float
     fsql: float
     itfsq: int = 0  # Number of iterations
-    fsqt: jt.Float[np.ndarray, "..."] = np.array([])  # Force residual
-    wdot: jt.Float[np.ndarray, "..."] = np.array([])  # Energy decay
+    fsqt: jt.Float[np.ndarray, "..."] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Force residual."""
+
+    wdot: jt.Float[np.ndarray, "..."] = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
+    """Energy decay."""
     iota_full: jt.Float[np.ndarray, "..."]
     safety_factor: jt.Float[np.ndarray, "..."]
     pressure_full: jt.Float[np.ndarray, "..."]
@@ -94,7 +102,9 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     overr: jt.Float[np.ndarray, "..."]
     # For compatibility with wout results produced by
     # vmecpp versions <0.4.0
-    bdotb: jt.Float[np.ndarray, "..."] = np.array([])
+    bdotb: jt.Float[np.ndarray, "..."] | None = pydantic.Field(
+        default_factory=lambda: np.array([])
+    )
     jdotb: jt.Float[np.ndarray, "..."]
     bdotgradv: jt.Float[np.ndarray, "..."]
     DMerc: jt.Float[np.ndarray, "..."]
@@ -137,6 +147,14 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     bsubsmnc_full: jt.Float[np.ndarray, "..."]
     bsupumns: jt.Float[np.ndarray, "..."]
     bsupvmns: jt.Float[np.ndarray, "..."]
+
+    @pydantic.field_validator("bdotb", mode="before")
+    def check_bdotb(
+        cls, bdotb: jt.Float[np.ndarray, "..."] | None
+    ) -> jt.Float[np.ndarray, "..."]:
+        if bdotb is None:
+            return np.array([])
+        return bdotb
 
     @property
     def nextcur(self) -> int:
