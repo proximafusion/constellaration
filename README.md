@@ -94,6 +94,13 @@ To locally run all unit tests (while in the top directory of the repo)
 pytest .
 ```
 
+## Optimization baseline
+
+The optimization baseline can be executed by running the individual files within the folder
+```
+optimization_examples
+```
+
 ## Citation
 
 If you find this work useful, please cite us:

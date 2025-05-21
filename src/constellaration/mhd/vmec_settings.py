@@ -59,7 +59,7 @@ class VmecPresetSettings(pydantic.BaseModel):
         "from_boundary_resolution",
         "high_fidelity",
         "low_fidelity",
-        "ultra_low_fidelity",
+        "very_low_fidelity",
     ] = "from_boundary_resolution"
     """Available presets:
 
@@ -70,7 +70,7 @@ class VmecPresetSettings(pydantic.BaseModel):
             convergence rate.
      * `low_fidelity`: Optimizes for runtime over correctness/fidelity and VMEC
             convergence rate.
-    * `ultra_low_fidelity`: Optimizes for runtime over correctness/fidelity and
+    * `very_low_fidelity`: Optimizes for runtime over correctness/fidelity and
             VMEC convergence rate, but with a very low resolution. This is meant to be
             used for very fast convergence in optimization tasks where.
 
@@ -122,8 +122,8 @@ def create_vmec_settings_from_preset(
         vmec_settings = vmec_settings_from_boundary_resolution(
             boundary=boundary,
         )
-    elif settings.fidelity == "ultra_low_fidelity":
-        vmec_settings = vmec_settings_ultra_low_fidelity_fixed_boundary(
+    elif settings.fidelity == "very_low_fidelity":
+        vmec_settings = vmec_settings_very_low_fidelity_fixed_boundary(
             boundary=boundary,
         )
     else:
@@ -238,14 +238,14 @@ def vmec_settings_low_fidelity_fixed_boundary(
     )
 
 
-def vmec_settings_ultra_low_fidelity_fixed_boundary(
+def vmec_settings_very_low_fidelity_fixed_boundary(
     boundary: surface_rz_fourier.SurfaceRZFourier,
 ) -> VmecSettings:
-    """A very low-fidelity VMEC configuration that provides defaults for the given
+    """A sensible low-fidelity VMEC configuration that provides defaults for the given
     boundary by matching the boundary's Fourier resolution to VMEC++'s internal
     resolution.
 
-    Used for very fast convergence in optimization tasks.
+    Optimization tasks might default to these settings to speed up convergence.
     """
     # The criterion we use below to set n_toroidal_grid_points breaks down for ntor == 0
     assert boundary.max_toroidal_mode != 0, "axisymmetric boundaries are not supported"
@@ -274,15 +274,17 @@ def vmec_settings_ultra_low_fidelity_fixed_boundary(
         max_toroidal_mode=max_toroidal_mode,
         n_poloidal_grid_points=n_poloidal_points,
         n_toroidal_grid_points=n_toroidal_points,
+        # Reduce the number of flux surfaces and the force tolerance to speed up
+        # convergence.
         multigrid_steps=[
             VmecMultiGridStep(
                 n_flux_surfaces=25, force_tolerance=1e-17, n_max_iterations=2000
             ),
             VmecMultiGridStep(
-                n_flux_surfaces=51, force_tolerance=1e-9, n_max_iterations=20000
+                n_flux_surfaces=71, force_tolerance=1e-9, n_max_iterations=20000
             ),
         ],
-        time_step=0.9,
+        time_step=0.7,
     )
 
 

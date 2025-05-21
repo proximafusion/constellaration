@@ -8,7 +8,7 @@ from pymoo.indicators import hv
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
 
-_DEFAULT_RELATIVE_TOLERANCE = 5e-2
+_DEFAULT_RELATIVE_TOLERANCE = 1e-2
 
 
 class _Problem(abc.ABC):
@@ -120,6 +120,7 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
 
 class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     """A problem to evaluate stellarator designs for ease of construction and deviation
+    from a Quasi-isodynamic (QI) field.
 
     Feasibility constraints:
         1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the
