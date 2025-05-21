@@ -1,7 +1,10 @@
+import aurora
 import numpy as np
 from desc import magnetic_fields as desc_magnetic_fields
 
 from constellaration.omnigeneity import omnigenity_field
+
+aurora.set("hello")
 
 
 def omnigenous_field_from_desc(
