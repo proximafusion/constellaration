@@ -41,7 +41,7 @@ def test_optimize_boundary_omnigenity_vmec_with_sampled_targets() -> None:
         n_inner_optimizations=1,
         gradient_free_optimization_hypercube_bounds=0.1,
         gradient_free_budget_per_design_variable=1,
-        gradient_free_max_time=20.0,
+        gradient_free_max_time=20,
         verbose=False,
     )
 

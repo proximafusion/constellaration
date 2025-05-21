@@ -19,9 +19,9 @@ def pydantic_flatten(
 ]:
     """A jax pytree compatible implementation of flattening pydantic objects.
 
-    A general pydantic.BaseModel is flattened into a tuple of children and aux_data. aux_data is
-    used to reconstruct the same type of Pydantic in unflatten. meta_fields are used
-    to specify fields that should not be visible to pytree operations. See
+    A general pydantic.BaseModel is flattened into a tuple of children and aux_data.
+    aux_data is used to reconstruct the same type of Pydantic in unflatten. meta_fields
+    are used to specify fields that should not be visible to pytree operations. See
     https://jax.readthedocs.io/en/latest/_autosummary/jax.tree_util.register_dataclass.html
     for details.
     """

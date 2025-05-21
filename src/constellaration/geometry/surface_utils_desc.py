@@ -224,7 +224,8 @@ def from_qp_model(
     is_stellarator_symmetric: bool = True,
     is_iota_positive: bool = True,
 ) -> surface_rz_fourier.SurfaceRZFourier:
-    """Create a `SurfaceRZFourier` from section III (Goodman et al 2023) for quasi-poloidal symmetry.
+    """Create a `SurfaceRZFourier` from section III (Goodman et al 2023) for
+    quasi-poloidal symmetry.
 
     This function wraps the `from_qp_model` method of a `FourierRZToroidalSurface`.
 

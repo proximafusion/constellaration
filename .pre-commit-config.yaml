@@ -30,3 +30,7 @@ repos:
     hooks:
       - id: black
         language_version: python3.10
+- repo: https://github.com/RobertCraigie/pyright-python
+  rev: v1.1.401
+  hooks:
+  - id: pyright

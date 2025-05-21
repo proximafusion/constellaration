@@ -60,6 +60,9 @@ path = "src/constellaration/__about__.py"
 test = ["pytest"]
 lint = ["pre-commit"]
 
+[tool.hatch.envs.default]
+path = "venv"
+
 [tool.hatch.envs.test]
 dependencies = ["pytest"]
 
@@ -105,6 +108,7 @@ line-length = 88
 extend-select = [
   "ARG",      # flake8-unused-arguments
   "EXE",      # flake8-executable
+  "E501",     # line-too-long
   "FURB",     # refurb
   "G",        # flake8-logging-format
   "ICN",      # flake8-import-conventions
@@ -120,3 +124,8 @@ ignore = [
 
 [tool.isort]
 profile = "black"
+
+[tool.pyright]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = "venv"
