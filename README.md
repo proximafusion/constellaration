@@ -17,7 +17,8 @@ The following instructions have been tested on **Ubuntu 22.04**. Other platforms
 The system dependency `libnetcdf-dev` is required for running the forward model. On Ubuntu, please ensure it is installed before proceeding, by running:
 
   ```bash
-  sudo apt-get install libnetcdf-dev
+  sudo apt-get update
+  sudo apt-get install build-essential cmake libnetcdf-dev
   ```
 
 ### Install from PyPI
@@ -72,6 +73,8 @@ To be able to run unit tests, please install the test and lint environment:
 ```bash
 pip install -e ".[test,lint]"
 ```
+
+**Note:** The development and test environment currently supports **Python 3.10** only. Other Python versions are not guaranteed to work.
 ### Linting
 
 We use **pre-commit** to automatically lint and format code before each commit. Linting is static code analysis that catches style issues and potential errors. If any **hook** fails, the commit will be blocked until you fix the reported issues and re-stage your changes.
