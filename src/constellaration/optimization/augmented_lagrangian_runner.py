@@ -129,7 +129,8 @@ def run(
     Args:
         boundary: The initial surface configuration.
         settings: Optimization settings including AL method parameters.
-        problem: The problem to solve, either MHDStableQIStellarator or SingleObjectiveProblem.
+        problem: The problem to solve, either MHDStableQIStellarator or
+            SingleObjectiveProblem.
         aspect_ratio_upper_bound: Optional upper bound for the aspect ratio constraint.
 
     Returns:
