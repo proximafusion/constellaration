@@ -27,6 +27,10 @@ def load_and_concat_source_datasets_with_no_errors() -> pd.DataFrame:
     dframe = datasets.load_dataset("proxima-fusion/constellaration", "full_flat")[  # type: ignore
         "train"
     ].to_pandas()  # type: ignore
+    dframe_json = datasets.load_dataset("proxima-fusion/constellaration", "full_json")[  # type: ignore
+        "train"
+    ].to_pandas()  # type: ignore
+    dframe["boundary.json"] = dframe_json["boundary.json"]  # type: ignore
 
     assert isinstance(dframe, pd.DataFrame)
     errors_dframe = dframe[
@@ -77,12 +81,10 @@ def _unflatten_metrics_and_concatenate(
     dframe: pd.DataFrame,
 ) -> pd.DataFrame:
     """Unflattens the metrics and concatenates them with the original DataFrame."""
-    metrics_dframe = pd.DataFrame(
-        orjson.loads(f"[{','.join(dframe['metrics.metrics'])}]")
-    )
+    metrics_dframe = pd.DataFrame(orjson.loads(f"[{','.join(dframe['metrics.json'])}]"))
     return pd.concat(
         [
-            dframe.drop(columns=["metrics.metrics"]).reset_index(drop=True),
+            dframe.drop(columns=["metrics.json"]).reset_index(drop=True),
             metrics_dframe,
         ],
         axis=1,
@@ -99,7 +101,7 @@ def _unserialize_surface(
     ) -> pd.Series:
         """Unserializes a single row of the DataFrame."""
         surface = surface_rz_fourier.SurfaceRZFourier.model_validate_json(
-            row["boundary.surface"]  # type: ignore
+            row["boundary.json"]  # type: ignore
         )  # type: ignore
         row["boundary"] = surface
         return row
