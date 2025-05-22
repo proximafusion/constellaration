@@ -30,6 +30,27 @@ def make_theta_phi_grid(
     return theta_phi
 
 
+def energy_spectrum_scaling(
+    poloidal_modes: jt.Float[np.ndarray, " n_modes"],
+    toroidal_modes: jt.Float[np.ndarray, " n_modes"],
+    energy_scale: float,
+) -> jt.Float[np.ndarray, " n_modes"]:
+    r"""Compute a scale for SurfaceRZFourier Fourier coefficients based on the `energy`
+    of the modes.
+
+    The spectrum scaling is computed as:
+
+    ... math::
+
+        10^{-\sqrt{m^2 + n^2} / energy_scale}
+
+    where `energy_scale` is a constant that determines the scaling of the Fourier
+    spectrum.
+    """
+    energy = poloidal_modes**2 + toroidal_modes**2
+    return 10 ** (-np.sqrt(energy) / energy_scale)
+
+
 def n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
     n_poloidal_modes: int,
     max_toroidal_mode: int,

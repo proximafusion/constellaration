@@ -839,3 +839,23 @@ def _evaluate_dz_dtheta(
             axis=(-1, -2),
         )
     return dz_dtheta
+
+
+def build_surface_rz_fourier_mask(
+    surface: SurfaceRZFourier,
+    max_poloidal_mode: int,
+    max_toroidal_mode: int,
+) -> SurfaceRZFourier:
+    fourier_coefficients_mask = jnp.asarray(
+        (surface.poloidal_modes > 0)
+        | ((surface.poloidal_modes == 0) & (surface.toroidal_modes >= 1))
+    )
+    fourier_coefficients_mask &= (surface.poloidal_modes <= max_poloidal_mode) & (
+        np.abs(surface.toroidal_modes) <= max_toroidal_mode
+    )
+    return surface.model_copy(
+        update=dict(
+            r_cos=fourier_coefficients_mask,
+            z_sin=fourier_coefficients_mask,
+        ),
+    )
