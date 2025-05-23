@@ -20,6 +20,7 @@ class NevergradSettings(pydantic.BaseModel):
     budget_max: int
     max_time: float | None
     num_workers: int
+    batch_mode: bool
 
 
 class AugmentedLagrangianMethodSettings(pydantic.BaseModel):

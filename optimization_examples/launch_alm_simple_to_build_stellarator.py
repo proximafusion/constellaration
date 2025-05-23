@@ -19,6 +19,7 @@ OPTIMIZATION_SETTINGS = optimization_settings.OptimizationSettings(
             budget_max=20000,
             budget_increment=260,
             max_time=None,
+            batch_mode=False,
         ),
         penalty_parameters_initial=10,
         bounds_initial=0.5,

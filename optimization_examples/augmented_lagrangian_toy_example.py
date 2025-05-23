@@ -1,14 +1,13 @@
 import multiprocessing
 import time
-import warnings
 from concurrent import futures
 
-import cma
 import jax.numpy as jnp
 import nevergrad
 import numpy as np
 
 import constellaration.optimization.augmented_lagrangian as al
+import constellaration.utils.seed_util as seed_util
 
 
 def objective_constraints(x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
@@ -27,10 +26,11 @@ def objective_constraints(x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
 
 def run(x0: jnp.ndarray):
     objective, constraints = objective_constraints(x0)
-    num_workers = 4
+    num_workers = 17
     budget = 100
     max_time = None
 
+    seed_util.seed_everything(123)
     settings = al.AugmentedLagrangianSettings()
 
     state = al.AugmentedLagrangianState(
@@ -43,14 +43,15 @@ def run(x0: jnp.ndarray):
     )
 
     mp_context = multiprocessing.get_context("forkserver")
-    warnings.simplefilter("ignore", cma.evolution_strategy.InjectionWarning)
+    # warnings.simplefilter("ignore", cma.evolution_strategy.InjectionWarning)
     for k in range(25):
         parametrization = nevergrad.p.Array(
             init=np.array(state.x),
             lower=np.array(state.x - state.bounds),
             upper=np.array(state.x + state.bounds),
         )
-
+        random_state = np.random.get_state()  # noqa: NPY002
+        parametrization.random_state.set_state(random_state)
         oracle = nevergrad.optimizers.NGOpt(
             parametrization=parametrization,
             budget=budget,
@@ -62,7 +63,7 @@ def run(x0: jnp.ndarray):
         with futures.ProcessPoolExecutor(
             max_workers=num_workers, mp_context=mp_context
         ) as executor:
-            running_evaluations = {}  # maps futures to candidates
+            running_evaluations = []  # list of (future, candidate)
             rest_budget = budget
 
             while (rest_budget or running_evaluations) and (
@@ -74,38 +75,42 @@ def run(x0: jnp.ndarray):
                     future = executor.submit(
                         objective_constraints, x=jnp.array(candidate.value)
                     )
-                    running_evaluations[future] = candidate
+                    running_evaluations.append((future, candidate))
                     rest_budget -= 1
 
+                # Wait on just the futures
                 new_completed, _ = futures.wait(
-                    running_evaluations,
+                    [fut for fut, _ in running_evaluations],
                     return_when=futures.FIRST_COMPLETED,
                 )
 
-                for future in new_completed:
-                    candidate = running_evaluations.pop(future)
-                    objective = jnp.array(jnp.inf)
-                    constraints = jnp.ones_like(state.constraints) * jnp.inf
-
-                    # TODO this try-catch block is a dirty hack to prevent
-                    # RuntimeErrors that result from forbidden manipulation of a dict
-                    try:
+                # Find completed futures and process them
+                completed = []
+                for future, candidate in running_evaluations:
+                    if future in new_completed:
                         objective, constraints = future.result()
-                    except Exception:
-                        pass
 
-                    if rest_budget % 10 == 0:
-                        recommendation = oracle.provide_recommendation()
-                        print(
-                            f"    {al.augmented_lagrangian_function(objective, constraints, state)} {rest_budget} {recommendation.value}"  # noqa: E501
+                        if rest_budget % 1 == 0:
+                            recommendation = oracle.provide_recommendation()
+                            print(
+                                f"    {al.augmented_lagrangian_function(objective, constraints, state)} {rest_budget} {recommendation.value}"  # noqa: E501
+                            )
+
+                        oracle.tell(
+                            candidate,
+                            al.augmented_lagrangian_function(
+                                objective, constraints, state
+                            ).item(),
                         )
 
-                    oracle.tell(
-                        candidate,
-                        al.augmented_lagrangian_function(
-                            objective, constraints, state
-                        ).item(),
-                    )
+                        completed.append((future, candidate))
+
+                # Remove completed futures from running_evaluations
+                running_evaluations = [
+                    (fut, cand)
+                    for fut, cand in running_evaluations
+                    if fut not in new_completed
+                ]
 
             recommendation = oracle.provide_recommendation()
 

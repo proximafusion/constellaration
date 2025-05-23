@@ -93,11 +93,8 @@ def objective_constraints(
                 constraints = jnp.array(
                     [
                         metrics.aspect_ratio - aspect_ratio_upper_bound,
-                        100
-                        * (
-                            problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                            - metrics.edge_rotational_transform_over_n_field_periods
-                        ),
+                        problem._edge_rotational_transform_over_n_field_periods_lower_bound
+                        - metrics.edge_rotational_transform_over_n_field_periods,
                         jnp.log10(metrics.qi) - problem._log10_qi_upper_bound
                         if metrics.qi is not None
                         else 1.0,
@@ -212,8 +209,9 @@ def run(
             max_workers=settings.optimizer_settings.oracle_settings.num_workers,
             mp_context=mp_context,
         ) as executor:
-            running_evaluations = {}  # maps futures to candidates
             rest_budget = budget
+
+            running_evaluations = []  # list of (future, candidate)
 
             while (rest_budget or running_evaluations) and (
                 settings.optimizer_settings.oracle_settings.max_time is None
@@ -235,33 +233,41 @@ def run(
                         settings.forward_model_settings,
                         aspect_ratio_upper_bound,
                     )
-                    running_evaluations[future] = candidate
+                    running_evaluations.append((future, candidate))
                     rest_budget -= 1
 
+                # Wait for at least one to complete
+                return_when = (
+                    futures.ALL_COMPLETED
+                    if settings.optimizer_settings.oracle_settings.batch_mode
+                    else futures.FIRST_COMPLETED
+                )
                 new_completed, _ = futures.wait(
-                    running_evaluations,
-                    return_when=futures.FIRST_COMPLETED,
+                    [fut for fut, _ in running_evaluations],
+                    return_when=return_when,
                 )
 
-                for future in new_completed:
-                    n_function_evals += 1
-                    candidate = running_evaluations.pop(future)
-                    objective = jnp.array(jnp.inf)
-                    constraints = jnp.ones_like(state.constraints) * jnp.inf
+                completed = []
+                for future, candidate in running_evaluations:
+                    if future in new_completed:
+                        n_function_evals += 1
 
-                    # TODO this try-catch block is a dirty hack to prevent
-                    # RuntimeErrors that result from forbidden manipulation of dict
-                    try:
                         (objective, constraints), _ = future.result()
-                    except Exception:
-                        pass
 
-                    oracle.tell(
-                        candidate,
-                        al.augmented_lagrangian_function(
-                            objective, constraints, state
-                        ).item(),
-                    )
+                        oracle.tell(
+                            candidate,
+                            al.augmented_lagrangian_function(
+                                objective, constraints, state
+                            ).item(),
+                        )
+                        completed.append((future, candidate))
+
+                # Remove completed from the running list
+                running_evaluations = [
+                    (fut, cand)
+                    for fut, cand in running_evaluations
+                    if fut not in new_completed
+                ]
 
             recommendation = oracle.provide_recommendation()
             x = recommendation.value
