@@ -1,12 +1,15 @@
 import multiprocessing
 import time
 from concurrent import futures
+from typing import List, Tuple
 
 import jax.numpy as jnp
 import nevergrad
 import numpy as np
+from nevergrad.parametrization import parameter as param
 
 import constellaration.optimization.augmented_lagrangian as al
+import constellaration.optimization.settings as settings_module
 import constellaration.utils.seed_util as seed_util
 
 
@@ -24,27 +27,23 @@ def objective_constraints(x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
     return (objective, constraints)
 
 
-def run(x0: jnp.ndarray):
+def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSettings):
     objective, constraints = objective_constraints(x0)
-    num_workers = 17
-    budget = 100
-    max_time = None
 
-    seed_util.seed_everything(123)
-    settings = al.AugmentedLagrangianSettings()
+    budget = settings.oracle_settings.budget_initial
 
     state = al.AugmentedLagrangianState(
         x=jnp.copy(x0),
         multipliers=jnp.zeros_like(constraints),
-        penalty_parameters=jnp.ones_like(constraints),
+        penalty_parameters=settings.penalty_parameters_initial
+        * jnp.ones_like(constraints),
         objective=objective,
         constraints=constraints,
-        bounds=jnp.array(2),
+        bounds=jnp.array(settings.bounds_initial),
     )
 
     mp_context = multiprocessing.get_context("forkserver")
-    # warnings.simplefilter("ignore", cma.evolution_strategy.InjectionWarning)
-    for k in range(25):
+    for k in range(settings.maxit):
         parametrization = nevergrad.p.Array(
             init=np.array(state.x),
             lower=np.array(state.x - state.bounds),
@@ -55,21 +54,26 @@ def run(x0: jnp.ndarray):
         oracle = nevergrad.optimizers.NGOpt(
             parametrization=parametrization,
             budget=budget,
-            num_workers=num_workers,
+            num_workers=settings.oracle_settings.num_workers,
         )
         oracle.suggest(np.array(state.x))
 
         t0 = time.time()
         with futures.ProcessPoolExecutor(
-            max_workers=num_workers, mp_context=mp_context
+            max_workers=settings.oracle_settings.num_workers, mp_context=mp_context
         ) as executor:
-            running_evaluations = []  # list of (future, candidate)
+            running_evaluations: List[
+                Tuple[futures.Future, param.Parameter]
+            ] = []  # list of (future, candidate)
             rest_budget = budget
 
             while (rest_budget or running_evaluations) and (
-                max_time is None or time.time() < t0 + max_time
+                settings.oracle_settings.max_time is None
+                or time.time() < t0 + settings.oracle_settings.max_time
             ):
-                while len(running_evaluations) < min(num_workers, rest_budget):
+                while len(running_evaluations) < min(
+                    settings.oracle_settings.num_workers, rest_budget
+                ):
                     candidate = oracle.ask()
 
                     future = executor.submit(
@@ -81,7 +85,11 @@ def run(x0: jnp.ndarray):
                 # Wait on just the futures
                 new_completed, _ = futures.wait(
                     [fut for fut, _ in running_evaluations],
-                    return_when=futures.FIRST_COMPLETED,
+                    return_when=(
+                        futures.ALL_COMPLETED
+                        if settings.oracle_settings.batch_mode
+                        else futures.FIRST_COMPLETED
+                    ),
                 )
 
                 # Find completed futures and process them
@@ -125,12 +133,34 @@ def run(x0: jnp.ndarray):
             objective=objective,
             constraints=constraints,
             state=state,
-            settings=settings,
+            settings=settings.augmented_lagrangian_settings,
         )
 
-        budget = int(jnp.minimum(200, budget + 26))
+        budget = int(
+            jnp.minimum(
+                settings.oracle_settings.budget_max,
+                budget + settings.oracle_settings.budget_increment,
+            )
+        )
 
 
 if __name__ == "__main__":
     x = jnp.array([2.0, 2.0])
-    run(x)
+
+    seed_util.seed_everything(123)
+
+    settings = settings_module.AugmentedLagrangianMethodSettings(
+        maxit=25,
+        oracle_settings=settings_module.NevergradSettings(
+            num_workers=20,
+            budget_initial=100,
+            budget_max=200,
+            budget_increment=26,
+            max_time=None,
+            batch_mode=False,
+        ),
+        penalty_parameters_initial=1,
+        bounds_initial=2,
+        augmented_lagrangian_settings=al.AugmentedLagrangianSettings(),
+    )
+    run(x, settings)
