@@ -7,6 +7,7 @@ from typing import Callable
 import jax.numpy as jnp
 import nevergrad
 import numpy as np
+from nevergrad.parametrization import parameter as param
 
 import constellaration.forward_model as forward_model
 import constellaration.geometry.surface_rz_fourier as rz_fourier
@@ -211,7 +212,7 @@ def run(
         ) as executor:
             rest_budget = budget
 
-            running_evaluations = []  # list of (future, candidate)
+            running_evaluations: list[tuple[futures.Future, param.Parameter]] = []
 
             while (rest_budget or running_evaluations) and (
                 settings.optimizer_settings.oracle_settings.max_time is None
@@ -247,7 +248,7 @@ def run(
                     return_when=return_when,
                 )
 
-                completed = []
+                completed: list[tuple[futures.Future, param.Parameter]] = []
                 for future, candidate in running_evaluations:
                     if future in new_completed:
                         n_function_evals += 1

@@ -62,9 +62,7 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
         with futures.ProcessPoolExecutor(
             max_workers=settings.oracle_settings.num_workers, mp_context=mp_context
         ) as executor:
-            running_evaluations: List[
-                Tuple[futures.Future, param.Parameter]
-            ] = []  # list of (future, candidate)
+            running_evaluations: List[Tuple[futures.Future, param.Parameter]] = []
             rest_budget = budget
 
             while (rest_budget or running_evaluations) and (
@@ -93,7 +91,7 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
                 )
 
                 # Find completed futures and process them
-                completed = []
+                completed: list[tuple[futures.Future, param.Parameter]] = []
                 for future, candidate in running_evaluations:
                     if future in new_completed:
                         objective, constraints = future.result()
