@@ -1,7 +1,6 @@
 import multiprocessing
 import time
 from concurrent import futures
-from typing import List, Tuple
 
 import jax.numpy as jnp
 import nevergrad
@@ -62,7 +61,7 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
         with futures.ProcessPoolExecutor(
             max_workers=settings.oracle_settings.num_workers, mp_context=mp_context
         ) as executor:
-            running_evaluations: List[Tuple[futures.Future, param.Parameter]] = []
+            running_evaluations: list[tuple[futures.Future, param.Parameter]] = []
             rest_budget = budget
 
             while (rest_budget or running_evaluations) and (
@@ -81,7 +80,7 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
                     rest_budget -= 1
 
                 # Wait on just the futures
-                new_completed, _ = futures.wait(
+                completed, _ = futures.wait(
                     [fut for fut, _ in running_evaluations],
                     return_when=(
                         futures.ALL_COMPLETED
@@ -91,9 +90,8 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
                 )
 
                 # Find completed futures and process them
-                completed: list[tuple[futures.Future, param.Parameter]] = []
                 for future, candidate in running_evaluations:
-                    if future in new_completed:
+                    if future in completed:
                         objective, constraints = future.result()
 
                         if rest_budget % 1 == 0:
@@ -109,13 +107,11 @@ def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSett
                             ).item(),
                         )
 
-                        completed.append((future, candidate))
-
                 # Remove completed futures from running_evaluations
                 running_evaluations = [
                     (fut, cand)
                     for fut, cand in running_evaluations
-                    if fut not in new_completed
+                    if fut not in completed
                 ]
 
             recommendation = oracle.provide_recommendation()

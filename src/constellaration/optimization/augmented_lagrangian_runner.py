@@ -243,14 +243,13 @@ def run(
                     if settings.optimizer_settings.oracle_settings.batch_mode
                     else futures.FIRST_COMPLETED
                 )
-                new_completed, _ = futures.wait(
+                completed, _ = futures.wait(
                     [fut for fut, _ in running_evaluations],
                     return_when=return_when,
                 )
 
-                completed: list[tuple[futures.Future, param.Parameter]] = []
                 for future, candidate in running_evaluations:
-                    if future in new_completed:
+                    if future in completed:
                         n_function_evals += 1
 
                         (objective, constraints), _ = future.result()
@@ -261,13 +260,12 @@ def run(
                                 objective, constraints, state
                             ).item(),
                         )
-                        completed.append((future, candidate))
 
                 # Remove completed from the running list
                 running_evaluations = [
                     (fut, cand)
                     for fut, cand in running_evaluations
-                    if fut not in new_completed
+                    if fut not in completed
                 ]
 
             recommendation = oracle.provide_recommendation()
