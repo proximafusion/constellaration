@@ -14,20 +14,20 @@ This directory contains the  evaluation script and Docker setup for evaluating e
 2. **Run the evaluation:**
 
    The evaluation script expects two arguments:
-   - `--problem_type`: One of `geometrical`, `simple_to_build`, or `mhd_stable`.
+   - `--problem-type`: One of `geometrical`, `simple_to_build`, or `mhd_stable`.
    - `--input-file`: Path to the input JSON file (see below for format).
 
    Example (for a single-objective problem):
    ```bash
    docker run --rm -v $(pwd)/inputs:/inputs constellaration-eval \
-     --problem_type geometrical \
+     --problem-type geometrical \
      --input-file /inputs/boundary.json
    ```
 
    Example (for a multi-objective problem):
    ```bash
    docker run --rm -v $(pwd)/inputs:/inputs constellaration-eval \
-     --problem_type mhd_stable \
+     --problem-type mhd_stable \
      --input-file /inputs/boundaries.json
    ```
 

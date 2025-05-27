@@ -22,7 +22,7 @@ def load_boubdaries(data: str) -> list[surface_rz_fourier.SurfaceRZFourier]:
 def main():
     parser = argparse.ArgumentParser(description="Evaluate constellation problems.")
     parser.add_argument(
-        "--problem_type",
+        "--problem-type",
         type=str,
         required=True,
         help="Type of the problem",
