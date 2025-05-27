@@ -23,6 +23,15 @@ class _Problem(abc.ABC):
             np.all(normalized_constraint_violations <= _DEFAULT_RELATIVE_TOLERANCE)
         )
 
+    def compute_feasibility(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> float:
+        """Computes the feasibility of the design."""
+        normalized_constraint_violations = self._normalized_constraint_violations(
+            metrics
+        )
+        return float(np.max(np.maximum(normalized_constraint_violations, 0.0)))
+
     @abc.abstractmethod
     def _normalized_constraint_violations(
         self, metrics: forward_model.ConstellarationMetrics
@@ -30,9 +39,24 @@ class _Problem(abc.ABC):
         pass
 
 
+class EvaluationSingleObjective(pydantic.BaseModel):
+    objective: float
+    """The objective value of the solution."""
+    minimize_objective: bool
+    """Whether the objective is to be minimized (True) or maximized (False)."""
+    feasibility: float
+    """The infinity norm of the normalized constraint violations."""
+    score: float
+    """The score of the solution (0: bad, 1: good)."""
+
+
 class SingleObjectiveProblem(_Problem):
-    def score(self, boundary: surface_rz_fourier.SurfaceRZFourier) -> float:
-        """Computes a normalized score (0: bad, 1: good) for the design."""
+    def evaluate(
+        self, boundary: surface_rz_fourier.SurfaceRZFourier
+    ) -> EvaluationSingleObjective:
+        """Evaluate a single boundary and return objective, feasibility,
+        and normalized score.
+        """
         if self._does_it_require_qi:
             settings = forward_model.ConstellarationSettings.default_high_fidelity()
         else:
@@ -40,19 +64,49 @@ class SingleObjectiveProblem(_Problem):
                 forward_model.ConstellarationSettings.default_high_fidelity_skip_qi()
             )
         metrics, _ = forward_model.forward_model(boundary, settings=settings)
-        if not self.is_feasible(metrics):
-            return 0.0
-        return self._score(metrics)
+        score = 0.0
+        if self.is_feasible(metrics):
+            score = self._score(metrics)
+        objective, minimize_objective = self.get_objective(metrics)
+        return EvaluationSingleObjective(
+            objective=objective,
+            minimize_objective=minimize_objective,
+            feasibility=self.compute_feasibility(metrics),
+            score=score,
+        )
+
+    @abc.abstractmethod
+    def get_objective(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, bool]:
+        """Returns objective value and whether the objective should be minimized (True)
+        or maximized (False)."""
+        pass
 
     @abc.abstractmethod
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         pass
 
 
+class EvaluationMultiObjective(pydantic.BaseModel):
+    objectives: list[list[tuple[float, bool]]]
+    """A list of objectives for each solution, where each objective is a tuple
+    of (objective_value, minimize_objective)."""
+    feasibility: list[float]
+    """A list of infinity norms of the normalized constraint violations for each
+    solution."""
+    score: float
+    """The hypervolume of the Pareto front of the solutions."""
+
+
 class MultiObjectiveProblem(_Problem):
     @abc.abstractmethod
-    def score(self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]) -> float:
-        """Computes the hypervolume for the feasible designs."""
+    def evaluate(
+        self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]
+    ) -> EvaluationMultiObjective:
+        """Evaluate a list of boundaries and return a score for the set
+        (e.g., hypervolume).
+        """
         pass
 
 
@@ -89,6 +143,11 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
     ) = 0.3
 
     _does_it_require_qi: bool = False
+
+    def get_objective(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, bool]:
+        return (metrics.max_elongation, True)
 
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         return 1.0 - _normalize_between_bounds(
@@ -165,6 +224,11 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     _max_elongation_upper_bound: pydantic.PositiveFloat = 5.0
 
     _does_it_require_qi: bool = True
+
+    def get_objective(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, bool]:
+        return (metrics.minimum_normalized_magnetic_gradient_scale_length, False)
 
     def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
         return _normalize_between_bounds(
@@ -253,7 +317,9 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
 
     _does_it_require_qi: bool = True
 
-    def score(self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]) -> float:
+    def evaluate(
+        self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]
+    ) -> EvaluationMultiObjective:
         metrics: list[forward_model.ConstellarationMetrics] = []
         for boundary in boundaries:
             setting = forward_model.ConstellarationSettings.default_high_fidelity()
@@ -262,7 +328,31 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
                 settings=setting,
             )
             metrics.append(m)
-        return self._score(metrics)
+        objectives = [self.get_objectives(m) for m in metrics]
+        feasibility = [self.compute_feasibility(m) for m in metrics]
+        return EvaluationMultiObjective(
+            objectives=objectives,
+            feasibility=feasibility,
+            score=self._score(metrics),
+        )
+
+    def get_objectives(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> list[tuple[float, bool]]:
+        """Returns a list of (objective_value, minimize) tuples.
+        Each tuple contains:
+        - The objective value
+        - A boolean indicating whether the objective should be minimized (True) or
+        maximized (False)
+        Returns:
+            List of tuples with:
+            - minimum normalized magnetic gradient scale length (maximize)
+            - aspect ratio (minimize)
+        """
+        return [
+            (metrics.minimum_normalized_magnetic_gradient_scale_length, False),
+            (metrics.aspect_ratio, True),
+        ]
 
     def _score(self, metrics: list[forward_model.ConstellarationMetrics]) -> float:
         feasible_metrics = [m for m in metrics if self.is_feasible(m)]
