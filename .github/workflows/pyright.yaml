@@ -29,6 +29,8 @@ jobs:
           python3 -m venv venv
           source venv/bin/activate
           pip install .[test]
+          # Install additional dependencies needed for type checking
+          pip install gradio
 
       - run: echo "$PWD/venv/bin" >> $GITHUB_PATH
       - uses: jakebailey/pyright-action@v2
