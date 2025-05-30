@@ -1,4 +1,3 @@
-import argparse
 import json
 from pathlib import Path
 
@@ -19,22 +18,10 @@ def load_boubdaries(data: str) -> list[surface_rz_fourier.SurfaceRZFourier]:
     ]
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Evaluate constellation problems.")
-    parser.add_argument(
-        "--problem-type",
-        type=str,
-        required=True,
-        help="Type of the problem",
-        choices=PROBLEM_TYPES,
-    )
-    parser.add_argument(
-        "--input-file", type=str, required=True, help="Path to input JSON file"
-    )
-    args = parser.parse_args()
-    problem_type = args.problem_type
-
-    with Path(args.input_file).open("r") as f:
+def evaluate_problem(
+    problem_type: str, input_file: str
+) -> problems.EvaluationSingleObjective | problems.EvaluationMultiObjective:
+    with Path(input_file).open("r") as f:
         data = f.read()
 
     match problem_type:
@@ -49,9 +36,4 @@ def main():
             result = problems.MHDStableQIStellarator().evaluate(boundaries)
         case _:
             raise ValueError(f"Unknown problem type: {problem_type}")
-    # TODO: save output to a file?
-    print(result)
-
-
-if __name__ == "__main__":
-    main()
+    return result

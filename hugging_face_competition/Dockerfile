@@ -8,9 +8,10 @@ RUN apt-get update && apt-get install -y \
     libnetcdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Pin the version to guarantee consistent problem evaluation
-RUN pip install constellaration==0.2.1
+COPY . .
+RUN pip install -r requirements.txt
 
-COPY evaluation.py evaluation.py
+EXPOSE 7860
+ENV GRADIO_SERVER_NAME="0.0.0.0"
 
-ENTRYPOINT ["python", "evaluation.py"]
+CMD ["python", "app.py"]

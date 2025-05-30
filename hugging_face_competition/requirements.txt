@@ -1,0 +1,3 @@
+# Pin the version to guarantee consistent problem evaluation
+constellaration==0.2.1
+gradio
