@@ -99,10 +99,7 @@ pytest .
 
 ## Optimization baseline
 
-The optimization baseline can be executed by running the individual files within the folder
-```
-optimization_examples
-```
+The optimization baseline can be executed by running the individual files within the folder `optimization_examples`.
 
 ## Citation
 
