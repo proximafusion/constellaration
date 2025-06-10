@@ -18,19 +18,15 @@ SEED = 24
 ANY_PROBLEM = problems.GeometricalProblem | problems.SimpleToBuildQIStellarator
 
 
-def load_and_concat_source_datasets_with_no_errors() -> pd.DataFrame:
+def load_source_datasets_with_no_errors() -> pd.DataFrame:
     """Load and concatenate source datasets from HugginFace dataset.
 
     Includes all ids, unfolded targets and unfolded metrics but not the contents of the
     mhd  equilibria.
     """
-    dframe = datasets.load_dataset("proxima-fusion/constellaration", "full_flat")[  # type: ignore
+    dframe = datasets.load_dataset("proxima-fusion/constellaration", "default")[  # type: ignore
         "train"
     ].to_pandas()  # type: ignore
-    dframe_json = datasets.load_dataset("proxima-fusion/constellaration", "full_json")[  # type: ignore
-        "train"
-    ].to_pandas()  # type: ignore
-    dframe["boundary.json"] = dframe_json["boundary.json"]  # type: ignore
 
     assert isinstance(dframe, pd.DataFrame)
     errors_dframe = dframe[
