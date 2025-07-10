@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import jaxtyping as jt
 import numpy as np
 import pydantic
@@ -7,6 +9,7 @@ from typing_extensions import Self
 from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.geometry import surface_utils
+from constellaration.utils.types import NpOrJaxArray
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 FourierModes = jt.Int[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
@@ -859,3 +862,39 @@ def build_surface_rz_fourier_mask(
             z_sin=fourier_coefficients_mask,
         ),
     )
+
+
+def spectral_width(
+    arrays: Sequence[jt.Float[NpOrJaxArray, "n_poloidal_modes n_toroidal_modes"]],
+    p: int,
+    q: int,
+    normalize: bool = True,
+) -> jt.Float[NpOrJaxArray, ""]:
+    r"""Computes the spectral width of a sequence of Fourier coefficients.
+
+    The spectral width is defined as:
+
+    .. math::
+        \frac{\sum_{m,n} m^{p+q} (x_{mn}^2 + ...)}{\sum_{m,n} m^p (x_{mn}^2 + ...)}
+
+    Args:
+        arrays: the sequence of Fourier coefficients.
+        p, q: see expression above.
+        normalize: whether to normalize the spectral width by the sum of the
+            coefficients. See expression above. Defaults to True.
+    """
+    for array in arrays:
+        assert array.shape == arrays[0].shape
+    max_m = arrays[0].shape[0] - 1
+
+    xm = jnp.arange(max_m + 1)[:, None]
+    coefficients = jnp.column_stack(arrays)
+    denominator = xm**p * coefficients**2
+    numerator = xm**q * denominator
+
+    if not normalize:
+        return jnp.sum(numerator)
+
+    denominator_sum = jnp.sum(denominator)
+    condition = denominator_sum == 0.0
+    return jnp.where(condition, 1.0, jnp.sum(numerator) / denominator_sum)
