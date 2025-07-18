@@ -608,3 +608,57 @@ def test_spectral_width(test_case: SpectralWidthTestCase):
     np.testing.assert_allclose(
         computed_spectral_width, test_case.expected_spectral_width, atol=0, rtol=0
     )
+
+
+def test_from_points() -> None:
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(0, 1)": 0.3,
+        "r_cos(1, -1)": 0.1,
+        "r_cos(1, 1)": 0.05,
+        "z_sin(0, 0)": 0.0,
+        "z_sin(0, 1)": 0.3,
+        "z_sin(1, -1)": 0.1,
+    }
+    n_field_periods = 2
+    is_stellarator_symmetric = True
+    surface = surface_rz_fourier.boundary_from_named_modes(
+        named_modes, is_stellarator_symmetric, n_field_periods
+    )
+    thetas = np.linspace(
+        0.0,
+        2 * np.pi,
+        7,
+        endpoint=True,
+    )
+    phis = np.linspace(
+        0.0,
+        2 * np.pi,
+        13,
+        endpoint=True,
+    )
+    thetas_grid, phis_grid = np.meshgrid(thetas, phis, indexing="ij")
+    theta_phi = np.stack([thetas_grid, phis_grid], axis=-1)
+    fitted_surface, residual = surface_rz_fourier.from_points(
+        surface_rz_fourier.evaluate_points_xyz(
+            surface,
+            theta_phi,
+        ),
+        theta_phi=theta_phi,
+        n_field_periods=2,
+        n_poloidal_modes=2,
+        n_toroidal_modes=3,
+    )
+    np.testing.assert_allclose(
+        fitted_surface.r_cos,
+        surface.r_cos,
+        atol=1e-14,
+        rtol=0.0,
+    )
+    np.testing.assert_allclose(
+        fitted_surface.z_sin,
+        surface.z_sin,
+        atol=1e-14,
+        rtol=0.0,
+    )
+    assert surface.is_stellarator_symmetric == fitted_surface.is_stellarator_symmetric

@@ -869,7 +869,7 @@ def spectral_width(
     p: int = 4,
     q: int = 1,
     normalize: bool = True,
-) -> jt.Float[NpOrJaxArray, ""]:
+) -> jt.Float[NpOrJaxArray, " "]:
     r"""Computes the spectral width of a sequence of Fourier coefficients.
 
     The spectral width is defined as:
@@ -900,3 +900,133 @@ def spectral_width(
     denominator_sum = jnp.sum(denominator)
     condition = denominator_sum == 0.0
     return jnp.where(condition, 1.0, jnp.sum(numerator) / denominator_sum)
+
+
+def evaluate_dxyz_dcoeff(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[NpOrJaxArray, "n_theta n_phi theta_or_phi=2"],
+) -> jt.Float[
+    jt.Array,
+    "n_theta n_phi xyz=3 n_coeff_types n_poloidal_modes n_toroidal_modes",
+]:
+    """Evaluate the derivative of the X, Y, and Z coordinates with respect to the
+    Fourier coefficients.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The derivative of the X, Y, and Z coordinates with respect to the Fourier
+        coefficients. The first dimensions correspond to the evaluated points `xyz`,
+        and the last dimensions of the tensor correspond to the different coefficients.
+        `n_coeff_types` indexes `r_cos`, `z_sin`, and optionally `r_sin`, `z_cos` in
+        that order.
+    """
+    angle = _compute_angle(surface, theta_phi)
+    # Derivative with respect to coefficients (r_cos and z_sin) is the basis function
+    dz_dzcos = dr_drcos = jnp.cos(angle)
+    dr_drsin = dz_dzsin = jnp.sin(angle)
+    zeros = jnp.zeros_like(angle)
+    # if surface.is_stellarator_symmetric:
+    #     dr_drcos = dr_drcos.at[0, : surface.max_toroidal_mode].set(0.0)
+    #     dz_dzsin = dz_dzsin.at[0, : surface.max_toroidal_mode + 1].set(0.0)
+
+    # Contribution from r_cos
+    phi = theta_phi[..., 1]
+    dx_drcos = dr_drcos * jnp.cos(phi)[..., jnp.newaxis, jnp.newaxis]
+    dy_drcos = dr_drcos * jnp.sin(phi)[..., jnp.newaxis, jnp.newaxis]
+
+    # If not stellarator symmetric, include r_sin and z_cos
+    if surface.is_stellarator_symmetric:
+        # Stack all derivatives along the last axis
+        dx_dcoeff = jnp.stack([dx_drcos, zeros], axis=-3)
+        dy_dcoeff = jnp.stack([dy_drcos, zeros], axis=-3)
+        dz_dcoeff = jnp.stack([zeros, dz_dzsin], axis=-3)
+    else:
+        dx_drsin = dr_drsin * jnp.cos(phi)[..., jnp.newaxis, jnp.newaxis]
+        dy_drsin = dr_drsin * jnp.sin(phi)[..., jnp.newaxis, jnp.newaxis]
+
+        dx_dcoeff = jnp.stack([dx_drcos, zeros, dx_drsin, zeros], axis=-3)
+        dy_dcoeff = jnp.stack([dy_drcos, zeros, dy_drsin, zeros], axis=-3)
+        dz_dcoeff = jnp.stack([zeros, dz_dzsin, zeros, dz_dzcos], axis=-3)
+    return jnp.stack((dx_dcoeff, dy_dcoeff, dz_dcoeff), axis=-4)
+
+
+def from_points(
+    points: jt.Float[NpOrJaxArray, "n_theta n_phi xyz=3"],
+    theta_phi: jt.Float[NpOrJaxArray, "n_theta n_phi theta_or_phi=2"],
+    n_field_periods: int,
+    n_poloidal_modes: int,
+    n_toroidal_modes: int,
+    is_stellarator_symmetric: bool = True,
+) -> tuple[SurfaceRZFourier, float | jt.Float[NpOrJaxArray, " "]]:
+    """Fit a fourier surface to a set of points, evaluated at the given theta and phi
+    locations, by solving a linear least squares problem.
+
+    Note: The fitted surface may have different Fourier coefficients than the input
+    surface, because there are multiple sets of coefficients that describe the same
+    geometry (poloidal gauge degree of freedom). Consider spectrally condensing it
+    before using it in other downstream tasks. If your input surface didn't have
+    standard orientation, neither will the output. Consider calling
+    `to_standard_orientation` on it.
+
+    Args:
+        points: The points to fit the surface to.
+        theta_phi: The theta and phi coordinates to which the points correspond to.
+        n_field_periods: The number of field periods of the resulting surface.
+        n_poloidal_modes: The number of poloidal modes to use in the Fourier expansion.
+        n_toroidal_modes: The number of toroidal modes to use in the Fourier expansion
+        is_stellarator_symmetric: Whether the resulting surface is stellarator
+            symmetric. This doesn't impose any restrictions on the input points,
+            non-stellarator symmetric input points will just result in a poor fit.
+
+    Returns:
+        A tuple containing the fitted `SurfaceRZFourier` and the residual of the least
+        squares solve, which indicates the quality of the fit.
+    """
+    # Compute dxyz_dcoeff (evaluate the basis functions at the points)
+    shape = (n_poloidal_modes, n_toroidal_modes)
+    surface = SurfaceRZFourier(
+        r_cos=np.zeros(shape),
+        z_sin=np.zeros(shape),
+        r_sin=None if is_stellarator_symmetric else np.zeros(shape),
+        z_cos=None if is_stellarator_symmetric else np.zeros(shape),
+        n_field_periods=n_field_periods,
+        is_stellarator_symmetric=is_stellarator_symmetric,
+    )
+    dxyz_dcoeff = evaluate_dxyz_dcoeff(surface, theta_phi)
+    assert points.shape == dxyz_dcoeff.shape[:3]
+    n_coeff_types = 2 if is_stellarator_symmetric else 4
+    assert dxyz_dcoeff.shape[-3] == n_coeff_types
+
+    # Flatten the last two dimensions (n_poloidal_modes, n_toroidal_modes)
+    dxyz_dcoeff = dxyz_dcoeff.reshape(*dxyz_dcoeff.shape[:4], -1)
+    # Remove the first n_toroidal_modes modes, because they are always zero in the
+    # stellarator symmetric case, and we don't want to fit them.
+    if is_stellarator_symmetric:
+        dxyz_dcoeff = dxyz_dcoeff[:, :, :, :, surface.max_toroidal_mode :]
+
+    flat_rhs = points.flatten()
+    coefficients, residual, _, _ = np.linalg.lstsq(
+        dxyz_dcoeff.reshape((len(flat_rhs), -1)),
+        flat_rhs,
+    )
+    # At this point, coefficients has shape
+    # (n_coeff_types, n_poloidal_modes, n_toroidal_modes)
+    split = np.split(coefficients, n_coeff_types)
+
+    if is_stellarator_symmetric:
+        surface.r_cos = np.pad(split[0], (surface.max_toroidal_mode, 0)).reshape(shape)
+        # Omit the first z mode (0,0) to remove z translation
+        surface.z_sin = np.pad(
+            split[1][1:], (surface.max_toroidal_mode + 1, 0)
+        ).reshape(shape)
+    else:
+        surface.r_cos = split[0].reshape(shape)
+        surface.z_sin = split[1].reshape(shape)
+        surface.r_sin = split[2].reshape(shape)
+        surface.z_cos = split[3].reshape(shape)
+
+    return surface, residual
