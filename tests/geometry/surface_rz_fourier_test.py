@@ -1,4 +1,8 @@
+import dataclasses
+
+import jaxtyping as jt
 import numpy as np
+import pytest
 
 from constellaration.geometry import surface_rz_fourier
 
@@ -451,4 +455,156 @@ def test_boundary_from_named_modes_round_trip_get_boundary_named_modes():
     assert (
         original_surface.is_stellarator_symmetric
         == reconstructed_surface.is_stellarator_symmetric
+    )
+
+
+@dataclasses.dataclass
+class SpectralWidthTestCase:
+    fourier_coefficients: list[
+        jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
+    ]
+    p: int
+    q: int
+    expected_spectral_width: float
+    normalize: bool = True
+
+
+SPECTRAL_WIDTH_TEST_CASES: list[SpectralWidthTestCase] = [
+    # toroidal curve (it has only m=0 coefficients)
+    # For this curve, the spectral width should be 1 since the curve
+    # does not have any m>1 coefficient contributions.
+    SpectralWidthTestCase(
+        fourier_coefficients=[np.arange(1, 4, dtype=float).reshape(1, 3)],
+        p=4,
+        q=1,
+        expected_spectral_width=1.0,
+    ),
+    # mimic 1D curve with xm = [1.0, 2.0, 3.0]
+    SpectralWidthTestCase(
+        fourier_coefficients=[np.arange(1, 4, dtype=float).reshape(3, 1)],
+        p=1,
+        q=1,
+        expected_spectral_width=(1 * 4 + 4 * 9) / (1 * 4 + 2 * 9),
+    ),
+    # same as above with p=4, q=1
+    SpectralWidthTestCase(
+        fourier_coefficients=[np.arange(1, 4, dtype=float).reshape(3, 1)],
+        p=4,
+        q=1,
+        expected_spectral_width=(1 * 4 + 32 * 9) / (1 * 4 + 16 * 9),
+    ),
+    # same as above with p=5, q=5
+    SpectralWidthTestCase(
+        fourier_coefficients=[np.arange(1, 4, dtype=float).reshape(3, 1)],
+        p=5,
+        q=5,
+        expected_spectral_width=(1 * 4 + 1024 * 9) / (1 * 4 + 32 * 9),
+    ),
+    # mimic 2D curve with xm = ym = [1.0, 2.0, 3.0]
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.arange(1, 4, dtype=float).reshape(3, 1),
+            np.arange(1, 4, dtype=float).reshape(3, 1),
+        ],
+        p=1,
+        q=1,
+        expected_spectral_width=(1 * 4 + 4 * 9) / (1 * 4 + 2 * 9),
+    ),
+    # same as above with p=4, q=1
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.arange(1, 4, dtype=float).reshape(3, 1),
+            np.arange(1, 4, dtype=float).reshape(3, 1),
+        ],
+        p=4,
+        q=1,
+        expected_spectral_width=(1 * 4 + 32 * 9) / (1 * 4 + 16 * 9),
+    ),
+    # mimic 2D curve of two coordinates with
+    # xmn = ymn = [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]].
+    # For example, xmn and ymn can be rc(m, n) and zs(m, n)
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.arange(1, 7, dtype=float).reshape(3, 2),
+            np.arange(1, 7, dtype=float).reshape(3, 2),
+        ],
+        p=1,
+        q=1,
+        expected_spectral_width=(1 * (9 + 16) + 4 * (25 + 36))
+        / (1 * (9 + 16) + 2 * (25 + 36)),
+    ),
+    # same as above without normalization
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.arange(1, 7, dtype=float).reshape(3, 2),
+            np.arange(1, 7, dtype=float).reshape(3, 2),
+        ],
+        p=1,
+        q=1,
+        normalize=False,
+        expected_spectral_width=2 * (1 * (9 + 16) + 4 * (25 + 36)),
+    ),
+    # test cases from:
+    # https://github.com/proximafusion/DESCUR/blob/master/src/python/lambdaDescur.py
+    # dshape
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.array([3.0, 0.991, 0.136, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).reshape(-1, 1),
+            np.array([0.0, 1.409, -0.118, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).reshape(-1, 1),
+        ],
+        p=4,
+        q=1,
+        expected_spectral_width=1.1487974178461664,
+    ),
+    # square
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.array([3.0, 0.4268, 0.0, 0.07322, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).reshape(
+                -1, 1
+            ),
+            np.array(
+                [0.0, 0.4268, 0.0, -0.07322, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            ).reshape(-1, 1),
+        ],
+        p=4,
+        q=1,
+        expected_spectral_width=2.408973284653641,
+    ),
+    # belt
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.array([3.0, 0.453, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).reshape(
+                -1, 1
+            ),
+            np.array([0.0, 0.6, 0.0, 0.196, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]).reshape(
+                -1, 1
+            ),
+        ],
+        p=4,
+        q=1,
+        expected_spectral_width=2.6925626307995447,
+    ),
+    # ellipse
+    SpectralWidthTestCase(
+        fourier_coefficients=[
+            np.array([3.0, 1.0, 0.0, 0.0]).reshape(-1, 1),
+            np.array([0.0, 0.6, 0.0, 0.0]).reshape(-1, 1),
+        ],
+        p=4,
+        q=1,
+        expected_spectral_width=1.0,
+    ),
+]
+
+
+@pytest.mark.parametrize("test_case", SPECTRAL_WIDTH_TEST_CASES)
+def test_spectral_width(test_case: SpectralWidthTestCase):
+    computed_spectral_width = surface_rz_fourier.spectral_width(
+        test_case.fourier_coefficients,
+        p=test_case.p,
+        q=test_case.q,
+        normalize=test_case.normalize,
+    )
+    np.testing.assert_allclose(
+        computed_spectral_width, test_case.expected_spectral_width, atol=0, rtol=0
     )
