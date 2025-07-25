@@ -737,11 +737,11 @@ def boundary_from_named_modes(
 
 def _compute_angle(
     surface: SurfaceRZFourier,
-    theta_phi: jt.Float[np.ndarray, "*dims 2"],
-) -> jt.Float[np.ndarray, "*dims n_poloidal_modes n_toroidal_modes"]:
+    theta_phi: jt.Float[NpOrJaxArray, "*dims 2"],
+) -> jt.Float[NpOrJaxArray, "*dims n_poloidal_modes n_toroidal_modes"]:
     # angle is the argument of sin and cos in the Fourier series
     # angle = m*theta - NFP*n*phi
-    angle: jt.Float[np.ndarray, "*dims n_poloidal_modes n_toroidal_modes"] = (
+    angle: jt.Float[NpOrJaxArray, "*dims n_poloidal_modes n_toroidal_modes"] = (
         surface.poloidal_modes * theta_phi[..., 0][..., np.newaxis, np.newaxis]
         - surface.n_field_periods
         * surface.toroidal_modes
