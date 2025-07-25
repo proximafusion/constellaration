@@ -42,8 +42,8 @@ def max_elongation(
     xm = equilibrium.xm
     xn = equilibrium.xn
 
-    rmnc = equilibrium.rmnc
-    zmns = equilibrium.zmns
+    rmnc = equilibrium.rmnc_transpose654.T
+    zmns = equilibrium.zmns_transpose654.T
 
     # Helper: Return (x,y,z) on the outermost flux surface for angles (theta, phi).
     def boundary_point(theta: float, phi: float) -> np.ndarray:

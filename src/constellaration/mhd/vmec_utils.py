@@ -23,15 +23,6 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     pcurr_type: str
     pmass_type: str
     piota_type: str
-    am: jt.Float[np.ndarray, "..."]
-    ac: jt.Float[np.ndarray, "..."]
-    ai: jt.Float[np.ndarray, "..."]
-    am_aux_s: jt.Float[np.ndarray, "..."]
-    am_aux_f: jt.Float[np.ndarray, "..."]
-    ac_aux_s: jt.Float[np.ndarray, "..."]
-    ac_aux_f: jt.Float[np.ndarray, "..."]
-    ai_aux_s: jt.Float[np.ndarray, "..."]
-    ai_aux_f: jt.Float[np.ndarray, "..."]
     nfp: int
     mpol: int
     ntor: int
@@ -87,16 +78,16 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     chipf: jt.Float[np.ndarray, "..."]
     jcuru: jt.Float[np.ndarray, "..."]
     jcurv: jt.Float[np.ndarray, "..."]
-    iota_half: jt.Float[np.ndarray, "..."]
-    mass: jt.Float[np.ndarray, "..."]
-    pressure_half: jt.Float[np.ndarray, "..."]
-    beta: jt.Float[np.ndarray, "..."]
-    buco: jt.Float[np.ndarray, "..."]
-    bvco: jt.Float[np.ndarray, "..."]
-    dVds: jt.Float[np.ndarray, "..."]
+    iotas_pad385: jt.Float[np.ndarray, "..."]
+    mass_pad385: jt.Float[np.ndarray, "..."]
+    pres_pad385: jt.Float[np.ndarray, "..."]
+    beta_vol_pad385: jt.Float[np.ndarray, "..."]
+    buco_pad385: jt.Float[np.ndarray, "..."]
+    bvco_pad385: jt.Float[np.ndarray, "..."]
+    vp_pad385: jt.Float[np.ndarray, "..."]
     spectral_width: jt.Float[np.ndarray, "..."]
-    phips: jt.Float[np.ndarray, "..."]
-    overr: jt.Float[np.ndarray, "..."]
+    phips_pad385: jt.Float[np.ndarray, "..."]
+    over_r_pad385: jt.Float[np.ndarray, "..."]
     # For compatibility with wout results produced by
     # vmecpp versions <0.4.0
     bdotb: jt.Float[np.ndarray, "..."] | None = pydantic.Field(
@@ -105,10 +96,10 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     jdotb: jt.Float[np.ndarray, "..."]
     bdotgradv: jt.Float[np.ndarray, "..."]
     DMerc: jt.Float[np.ndarray, "..."]
-    Dshear: jt.Float[np.ndarray, "..."]
-    Dwell: jt.Float[np.ndarray, "..."]
-    Dcurr: jt.Float[np.ndarray, "..."]
-    Dgeod: jt.Float[np.ndarray, "..."]
+    DShear: jt.Float[np.ndarray, "..."]
+    DWell: jt.Float[np.ndarray, "..."]
+    DCurr: jt.Float[np.ndarray, "..."]
+    DGeod: jt.Float[np.ndarray, "..."]
     equif: jt.Float[np.ndarray, "..."]
     curlabel: list[str]
     potvac: jt.Float[np.ndarray, "..."]
@@ -118,44 +109,35 @@ class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
     xn_nyq: jt.Int[np.ndarray, "..."]
     raxis_c: jt.Float[np.ndarray, "..."]
     zaxis_s: jt.Float[np.ndarray, "..."]
-    rmnc: jt.Float[np.ndarray, "..."]
-    zmns: jt.Float[np.ndarray, "..."]
-    lmns_full: jt.Float[np.ndarray, "..."]
-    lmns: jt.Float[np.ndarray, "..."]
-    gmnc: jt.Float[np.ndarray, "..."]
-    bmnc: jt.Float[np.ndarray, "..."]
-    bsubumnc: jt.Float[np.ndarray, "..."]
-    bsubvmnc: jt.Float[np.ndarray, "..."]
-    bsubsmns: jt.Float[np.ndarray, "..."]
-    bsubsmns_full: jt.Float[np.ndarray, "..."]
-    bsupumnc: jt.Float[np.ndarray, "..."]
-    bsupvmnc: jt.Float[np.ndarray, "..."]
     raxis_s: jt.Float[np.ndarray, "..."]
     zaxis_c: jt.Float[np.ndarray, "..."]
-    rmns: jt.Float[np.ndarray, "..."]
-    zmnc: jt.Float[np.ndarray, "..."]
-    lmnc_full: jt.Float[np.ndarray, "..."]
-    lmnc: jt.Float[np.ndarray, "..."]
-    gmns: jt.Float[np.ndarray, "..."]
-    bmns: jt.Float[np.ndarray, "..."]
-    bsubumns: jt.Float[np.ndarray, "..."]
-    bsubvmns: jt.Float[np.ndarray, "..."]
-    bsubsmnc: jt.Float[np.ndarray, "..."]
+
+    rmnc_transpose654: jt.Float[np.ndarray, "..."]
+    zmns_transpose654: jt.Float[np.ndarray, "..."]
+    rmns_transpose654: jt.Float[np.ndarray, "..."]
+    zmnc_transpose654: jt.Float[np.ndarray, "..."]
+    lmns_full_transpose654: jt.Float[np.ndarray, "..."]
+    lmnc_full_transpose654: jt.Float[np.ndarray, "..."]
+
+    lmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    lmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    gmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    gmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+
+    bsubumnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsubvmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsubsmns_transpose654: jt.Float[np.ndarray, "..."]
+    bsubsmns_full: jt.Float[np.ndarray, "..."]
+    bsupumnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsupvmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsubumns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsubvmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsubsmnc_transpose654: jt.Float[np.ndarray, "..."]
     bsubsmnc_full: jt.Float[np.ndarray, "..."]
-    bsupumns: jt.Float[np.ndarray, "..."]
-    bsupvmns: jt.Float[np.ndarray, "..."]
-
-    @pydantic.field_validator("bdotb", mode="before")
-    def check_bdotb(
-        cls, bdotb: jt.Float[np.ndarray, "..."] | None
-    ) -> jt.Float[np.ndarray, "..."]:
-        if bdotb is None:
-            return np.array([])
-        return bdotb
-
-    @property
-    def nextcur(self) -> int:
-        return len(self.extcur)
+    bsupumns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+    bsupvmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
 
     @property
     def n_field_periods(self) -> int:
@@ -339,19 +321,14 @@ def build_vmecpp_indata(
 def vmecppwout_from_wout(
     wout: vmecpp.VmecWOut,
 ) -> VmecppWOut:
-    cpp_wout = wout._to_cpp_wout()
-    assert isinstance(cpp_wout, vmecpp._vmecpp.WOutFileContents)
-
-    attributes = VmecppWOut.__annotations__.keys()
-    return VmecppWOut(**{attr: getattr(cpp_wout, attr) for attr in attributes})
+    return VmecppWOut.model_validate(wout, from_attributes=True)
 
 
 def as_simsopt_vmec(equilibrium: VmecppWOut) -> mhd.Vmec:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = pathlib.Path(tmpdir)
         wout_path = tmpdir / "wout_temp.nc"
-        wout = vmecpp.VmecWOut._from_cpp_wout(equilibrium)
-        wout.save(wout_path)
+        equilibrium.save(wout_path)
         return mhd.Vmec(wout_path.as_posix())
 
 
@@ -368,7 +345,7 @@ def magnetic_field_magnitude(
     """Computes the magnetic field magnitude on a set of of (s, theta, phi) points."""
     magnetic_field_interpolator = _build_radial_interpolator(
         equilibrium=equilibrium,
-        fourier_coefficients=equilibrium.bmnc,
+        fourier_coefficients=equilibrium.bmnc_transpose_pad356345.T[1:, :],
         is_on_full_mesh=False,
     )
     magnetic_field_fourier_coefficients = _interpolate_radially(
