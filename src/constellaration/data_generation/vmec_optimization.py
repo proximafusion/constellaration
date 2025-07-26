@@ -2,6 +2,7 @@ import concurrent.futures as futures
 import functools
 import multiprocessing
 import os
+import sys
 from typing import Callable
 
 import jaxtyping as jt
@@ -301,9 +302,11 @@ def _compute_modB(
 def _get_n_logical_cores() -> int:
     """Return the number of logical cores on the machine."""
     # See: https://askubuntu.com/questions/1292702/how-to-get-number-of-phy-logical-cores
-    return int(
-        os.popen("egrep '^core id' /proc/cpuinfo | sort -u | wc -l").read().strip()
-    )
+    if "linux" in sys.platform:
+        return int(
+            os.popen("egrep '^core id' /proc/cpuinfo | sort -u | wc -l").read().strip()
+        )
+    return os.cpu_count() or 1
 
 
 def _nevergrad_minimize(

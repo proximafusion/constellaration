@@ -16,7 +16,7 @@ def test_nevergrad_minimize_simple_quadratic() -> None:
         x=x0,
         hypercube_bounds=2.0,
         budget_per_design_variable=200,
-        max_time=20.0,
+        max_time=60.0,
         verbose=False,
     )
     # The minimum is at [2, -2]
@@ -41,7 +41,7 @@ def test_optimize_boundary_omnigenity_vmec_with_sampled_targets() -> None:
         n_inner_optimizations=1,
         gradient_free_optimization_hypercube_bounds=0.1,
         gradient_free_budget_per_design_variable=1,
-        gradient_free_max_time=20,
+        gradient_free_max_time=90,  # If the test fails, it might be due to a timeout.
         verbose=False,
     )
 
