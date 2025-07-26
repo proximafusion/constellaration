@@ -30,7 +30,7 @@ def pydantic_flatten(
         meta_fields = []
 
     data_fields = [
-        field for field in something.model_fields if field not in meta_fields
+        field for field in type(something).model_fields if field not in meta_fields
     ]
 
     aux_data = (

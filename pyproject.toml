@@ -51,7 +51,7 @@ dependencies = [
   "simsopt==1.8.1; python_version < '3.13'",
   "simsopt==1.9.0; python_version >= '3.13'",
   "seaborn==0.13.2",
-  "vmecpp==0.4.2",
+  "vmecpp>=0.4.7",
 ]
 
 [tool.hatch.metadata]

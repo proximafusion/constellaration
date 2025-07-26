@@ -29,9 +29,7 @@ def vacuum_well(
 
     # gmnc are the Fourier coefficients of the Jacobian in VMEC coordinates.
     # In VMEC, the radial derivative of the volume is (2pi)^2 * |g^{1/2}|.
-    d_volume_d_s = (
-        4 * np.pi * np.pi * np.abs(equilibrium.gmnc_transpose_pad356345[:, 0])
-    )
+    d_volume_d_s = 4 * np.pi * np.pi * np.abs(equilibrium.gmnc[0, 1:])
 
     # Extrapolate linearly to the magnetic axis and the LCFS.
     d_volume_d_s_at_magnetic_axis = 1.5 * d_volume_d_s[0] - 0.5 * d_volume_d_s[1]
@@ -87,12 +85,12 @@ def normalized_magnetic_gradient_scale_length(
     xn = equilibrium.xn
     xm_nyq = equilibrium.xm_nyq
     xn_nyq = equilibrium.xn_nyq
-    rmnc = equilibrium.rmnc_transpose654.T
-    zmns = equilibrium.zmns_transpose654.T
-    gmnc = equilibrium.gmnc_transpose_pad356345.T[1:, :]
-    bmnc = equilibrium.bmnc_transpose_pad356345.T[1:, :]
-    bsupumnc = equilibrium.bsupumnc_transpose_pad356345.T[1:, :]
-    bsupvmnc = equilibrium.bsupvmnc_transpose_pad356345.T[1:, :]
+    rmnc = equilibrium.rmnc.T
+    zmns = equilibrium.zmns.T
+    gmnc = equilibrium.gmnc.T[1:, :]
+    bmnc = equilibrium.bmnc.T[1:, :]
+    bsupumnc = equilibrium.bsupumnc.T[1:, :]
+    bsupvmnc = equilibrium.bsupvmnc.T[1:, :]
 
     s_full = np.linspace(0, 1, ns)
     ds = s_full[2] - s_full[1]

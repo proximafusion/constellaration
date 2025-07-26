@@ -8,136 +8,137 @@ import pydantic
 import vmecpp
 from scipy import interpolate
 from simsopt import mhd
-from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import flux_power_series, ideal_mhd_parameters, vmec_settings
 
+# We know that we are discarding coefficients, reduce output clutter.
+vmecpp.logger.setLevel("ERROR")
 
-# TODO(mariap): Remove this and use the class from vmecpp
-class VmecppWOut(pydantic_numpy.BaseModelWithNumpy):
-    version: str
-    input_extension: str = ""
-    sign_of_jacobian: int
-    gamma: float
-    pcurr_type: str
-    pmass_type: str
-    piota_type: str
-    nfp: int
-    mpol: int
-    ntor: int
-    lasym: bool
-    ns: int
-    ftolv: float
-    maximum_iterations: int
-    lfreeb: bool
-    mgrid_file: str
-    extcur: jt.Float[np.ndarray, "..."]
-    mgrid_mode: str
-    wb: float
-    wp: float
-    rmax_surf: float
-    rmin_surf: float
-    zmax_surf: float
-    mnmax: int
-    mnmax_nyq: int
-    ier_flag: int
-    aspect: float
-    betatot: float
-    betapol: float
-    betator: float
-    betaxis: float
-    b0: float
-    rbtor0: float
-    rbtor: float
-    IonLarmor: float
-    VolAvgB: float
-    ctor: float
-    Aminor_p: float
-    Rmajor_p: float
-    volume_p: float
-    fsqr: float
-    fsqz: float
-    fsql: float
-    itfsq: int = 0  # Number of iterations
-    fsqt: jt.Float[np.ndarray, "..."] = pydantic.Field(
-        default_factory=lambda: np.array([])
-    )
-    """Force residual."""
+# Renamed fields for backwards compatibility. Renaming is applied first.
+RENAMED_FIELDS = {
+    "maximum_iterations": "niter",
+    "sign_of_jacobian": "signgs",
+    "betatot": "betatotal",
+    "VolAvgB": "volavgB",
+    "iota_full": "iotaf",
+    "safety_factor": "q_factor",
+    "pressure_full": "presf",
+    "pressure_half": "pres",
+    "toroidal_flux": "phi",
+    "poloidal_flux": "chi",
+    "beta": "beta_vol",
+    "spectral_width": "specw",
+    "Dshear": "DShear",
+    "Dwell": "DWell",
+    "Dcurr": "DCurr",
+    "Dgeod": "DGeod",
+    "raxis_c": "raxis_cc",
+    "zaxis_s": "zaxis_cs",
+    "dVds": "vp",
+    "overr": "over_r",
+    "iota_half": "iotas",
+    "volume_p": "volume",
+    "version": "version_",
+}
+# Fields are first renamed, so use the new names here.
+PADDED_FIELDS = [
+    "iotas",
+    "mass",
+    "pres",
+    "beta_vol",
+    "buco",
+    "bvco",
+    "vp",
+    "phips",
+    "over_r",
+]
 
-    wdot: jt.Float[np.ndarray, "..."] = pydantic.Field(
-        default_factory=lambda: np.array([])
-    )
-    """Energy decay."""
-    iota_full: jt.Float[np.ndarray, "..."]
-    safety_factor: jt.Float[np.ndarray, "..."]
-    pressure_full: jt.Float[np.ndarray, "..."]
-    toroidal_flux: jt.Float[np.ndarray, "..."]
-    phipf: jt.Float[np.ndarray, "..."]
-    poloidal_flux: jt.Float[np.ndarray, "..."]
-    chipf: jt.Float[np.ndarray, "..."]
-    jcuru: jt.Float[np.ndarray, "..."]
-    jcurv: jt.Float[np.ndarray, "..."]
-    iotas_pad385: jt.Float[np.ndarray, "..."]
-    mass_pad385: jt.Float[np.ndarray, "..."]
-    pres_pad385: jt.Float[np.ndarray, "..."]
-    beta_vol_pad385: jt.Float[np.ndarray, "..."]
-    buco_pad385: jt.Float[np.ndarray, "..."]
-    bvco_pad385: jt.Float[np.ndarray, "..."]
-    vp_pad385: jt.Float[np.ndarray, "..."]
-    spectral_width: jt.Float[np.ndarray, "..."]
-    phips_pad385: jt.Float[np.ndarray, "..."]
-    over_r_pad385: jt.Float[np.ndarray, "..."]
-    # For compatibility with wout results produced by
-    # vmecpp versions <0.4.0
-    bdotb: jt.Float[np.ndarray, "..."] | None = pydantic.Field(
-        default_factory=lambda: np.array([])
-    )
-    jdotb: jt.Float[np.ndarray, "..."]
-    bdotgradv: jt.Float[np.ndarray, "..."]
-    DMerc: jt.Float[np.ndarray, "..."]
-    DShear: jt.Float[np.ndarray, "..."]
-    DWell: jt.Float[np.ndarray, "..."]
-    DCurr: jt.Float[np.ndarray, "..."]
-    DGeod: jt.Float[np.ndarray, "..."]
-    equif: jt.Float[np.ndarray, "..."]
-    curlabel: list[str]
-    potvac: jt.Float[np.ndarray, "..."]
-    xm: jt.Int[np.ndarray, "..."]
-    xn: jt.Int[np.ndarray, "..."]
-    xm_nyq: jt.Int[np.ndarray, "..."]
-    xn_nyq: jt.Int[np.ndarray, "..."]
-    raxis_c: jt.Float[np.ndarray, "..."]
-    zaxis_s: jt.Float[np.ndarray, "..."]
-    raxis_s: jt.Float[np.ndarray, "..."]
-    zaxis_c: jt.Float[np.ndarray, "..."]
+PADDED_AND_TRANSPOSED_FIELDS = [
+    "lmns",
+    "lmnc",
+    "gmnc",
+    "gmns",
+    "bmnc",
+    "bmns",
+    "bsubumnc",
+    "bsubvmnc",
+    "bsupumnc",
+    "bsupvmnc",
+    "bsubumns",
+    "bsubvmns",
+    "bsupumns",
+    "bsupvmns",
+]
 
-    rmnc_transpose654: jt.Float[np.ndarray, "..."]
-    zmns_transpose654: jt.Float[np.ndarray, "..."]
-    rmns_transpose654: jt.Float[np.ndarray, "..."]
-    zmnc_transpose654: jt.Float[np.ndarray, "..."]
-    lmns_full_transpose654: jt.Float[np.ndarray, "..."]
-    lmnc_full_transpose654: jt.Float[np.ndarray, "..."]
+ONLY_TRANSPOSED_FIELDS = [
+    "rmnc",
+    "zmns",
+    "rmns",
+    "zmnc",
+    "lmns_full",
+    "lmnc_full",
+    "bsubsmns",
+    "bsubsmnc",
+]
 
-    lmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    lmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    gmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    gmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
 
-    bsubumnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsubvmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsubsmns_transpose654: jt.Float[np.ndarray, "..."]
-    bsubsmns_full: jt.Float[np.ndarray, "..."]
-    bsupumnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsupvmnc_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsubumns_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsubvmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsubsmnc_transpose654: jt.Float[np.ndarray, "..."]
-    bsubsmnc_full: jt.Float[np.ndarray, "..."]
-    bsupumns_transpose_pad356345: jt.Float[np.ndarray, "..."]
-    bsupvmns_transpose_pad356345: jt.Float[np.ndarray, "..."]
+class VmecppWOut(vmecpp.VmecWOut):
+    @classmethod
+    def convert_cpp_format(cls, data: dict) -> dict:
+        for old_name, new_name in RENAMED_FIELDS.items():
+            if old_name in data:
+                data[new_name] = data.pop(old_name)
+
+        # Previously defaults could be either empty list or None when unset,
+        # now we want to let vmecpp handle defaulting fields correctly.
+        LEGAL_EMPTY_LISTS = ["curlabel", "extcur"]
+        keys_to_remove = [
+            key
+            for key in data
+            if key not in LEGAL_EMPTY_LISTS and (data[key] is None or data[key] == [])
+        ]
+        for field in keys_to_remove:
+            del data[field]
+
+        for field in PADDED_FIELDS:
+            if field in data:
+                data[field] = [0.0] + data[field]
+
+        for field in PADDED_AND_TRANSPOSED_FIELDS:
+            if field in data:
+                arr = np.array(data[field])
+                data[field] = (
+                    vmecpp._pad_and_transpose(arr, arr.shape[1])
+                ).tolist()  # pyright: ignore[reportOptionalMemberAccess]
+
+        for field in ONLY_TRANSPOSED_FIELDS:
+            if field in data:
+                data[field] = (np.array(data[field]).T).tolist()
+
+        return data
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def ensure_backwards_compatibility(cls, data):
+        """Ensure backwards compatibility with older versions of the wout file."""
+        # assert isinstance(data, dict)
+        if "iota_half" in data:
+            # Old naming convention, probably from constellaration <= 0.2.2
+            ns = data["DMerc"]
+            assert "dVds" in data
+            assert "Dshear" in data
+            assert "DShear" not in data
+            # Make sure the old fields are padded as expected
+            ns = data["ns"]
+            assert len(data["dVds"]) == ns - 1
+
+            data = VmecppWOut.convert_cpp_format(data)
+
+            assert "iota_half" not in data
+            assert "iotas" in data
+
+        return data
 
     @property
     def n_field_periods(self) -> int:
@@ -345,7 +346,7 @@ def magnetic_field_magnitude(
     """Computes the magnetic field magnitude on a set of of (s, theta, phi) points."""
     magnetic_field_interpolator = _build_radial_interpolator(
         equilibrium=equilibrium,
-        fourier_coefficients=equilibrium.bmnc_transpose_pad356345.T[1:, :],
+        fourier_coefficients=equilibrium.bmnc.T[1:, :],
         is_on_full_mesh=False,
     )
     magnetic_field_fourier_coefficients = _interpolate_radially(

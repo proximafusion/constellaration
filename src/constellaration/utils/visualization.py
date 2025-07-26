@@ -176,12 +176,12 @@ def plot_flux_surfaces(
     s_full_grid = np.linspace(0, 1, num=ns)
     angle = xm[:, None, None] * theta - xn[:, None, None] * phi
 
-    zmns = interpolate.interp1d(
-        s_full_grid, equilibrium.zmns_transpose654.T, kind="linear", axis=0
-    )(surfaces)[..., None, None]
-    rmnc = interpolate.interp1d(
-        s_full_grid, equilibrium.rmnc_transpose654.T, kind="linear", axis=0
-    )(surfaces)[..., None, None]
+    zmns = interpolate.interp1d(s_full_grid, equilibrium.zmns.T, kind="linear", axis=0)(
+        surfaces
+    )[..., None, None]
+    rmnc = interpolate.interp1d(s_full_grid, equilibrium.rmnc.T, kind="linear", axis=0)(
+        surfaces
+    )[..., None, None]
 
     R = np.sum(rmnc * np.cos(angle), axis=1)
     Z = np.sum(zmns * np.sin(angle), axis=1)

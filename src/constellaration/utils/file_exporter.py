@@ -1,7 +1,5 @@
 import pathlib
 
-import vmecpp
-
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import ideal_mhd_parameters, vmec_settings, vmec_utils
 
@@ -10,17 +8,7 @@ def to_vmec2000_wout_file(
     equilibrium: vmec_utils.VmecppWOut, output_file: pathlib.Path
 ) -> None:
     """Writes a VMEC equilibrium to a VMEC2000 wout file."""
-
-    # If these quantities are padded to 100, remove the padding
-    wout = vmecpp.VmecWOut._from_cpp_wout(
-        equilibrium.model_copy(
-            update={
-                "fsqt": equilibrium.fsqt[: equilibrium.itfsq],
-                "wdot": equilibrium.wdot[: equilibrium.itfsq],
-            }
-        )
-    )
-    return wout.save(output_file)
+    equilibrium.save(output_file)
 
 
 def to_vmec2000_input_file(
