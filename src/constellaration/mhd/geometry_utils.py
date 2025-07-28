@@ -42,8 +42,8 @@ def max_elongation(
     xm = equilibrium.xm
     xn = equilibrium.xn
 
-    rmnc = equilibrium.rmnc
-    zmns = equilibrium.zmns
+    rmnc = equilibrium.rmnc.T
+    zmns = equilibrium.zmns.T
 
     # Helper: Return (x,y,z) on the outermost flux surface for angles (theta, phi).
     def boundary_point(theta: float, phi: float) -> np.ndarray:
@@ -53,8 +53,8 @@ def max_elongation(
         yb = rb * np.sin(phi)
         return np.array([xb, yb, zb])
 
-    raxis_cc = equilibrium.raxis_c
-    zaxis_cs = equilibrium.zaxis_s
+    raxis_cc = equilibrium.raxis_cc
+    zaxis_cs = equilibrium.zaxis_cs
 
     # ------------------------------------------------------------------------
     # 2) Compute axis in cylindrical (R, Z) and then in Cartesian (X, Y)

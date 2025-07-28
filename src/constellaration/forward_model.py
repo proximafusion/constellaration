@@ -134,7 +134,7 @@ def forward_model(
     )
     iota = radial_profile.InterpolatedRadialProfile(
         rho=normalized_effective_radius_on_full_grid_mesh,
-        values=equilibrium.iota_full,
+        values=equilibrium.iotaf,
     )
     axis_rotational_transform = float(
         radial_profile.evaluate_at_normalized_effective_radius(iota, np.array([0.0]))

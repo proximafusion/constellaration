@@ -262,7 +262,7 @@ def _forward_model(
     )
     return OmnigenousFieldVmecOptimizationMetrics(
         aspect_ratio=equilibrium.aspect,
-        edge_iota=float(equilibrium.iota_full[-1]),
+        edge_iota=float(equilibrium.iotaf[-1]),
         max_elongation=max_elongation,
         omnigenous_field_residuals=np.asarray(omnigenous_field_residuals),
         modB_maxima_residuals=np.asarray(modB_maxima_residuals),
