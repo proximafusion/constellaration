@@ -329,7 +329,12 @@ def as_simsopt_vmec(equilibrium: VmecppWOut) -> mhd.Vmec:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir = pathlib.Path(tmpdir)
         wout_path = tmpdir / "wout_temp.nc"
-        equilibrium.save(wout_path)
+        extras = None
+        if equilibrium.model_extra is not None:
+            extras = set(equilibrium.model_extra.keys())
+        VmecppWOut.model_validate(equilibrium.model_dump(exclude=extras)).save(
+            wout_path,
+        )
         return mhd.Vmec(wout_path.as_posix())
 
 

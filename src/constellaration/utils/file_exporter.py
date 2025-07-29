@@ -8,7 +8,12 @@ def to_vmec2000_wout_file(
     equilibrium: vmec_utils.VmecppWOut, output_file: pathlib.Path
 ) -> None:
     """Writes a VMEC equilibrium to a VMEC2000 wout file."""
-    equilibrium.save(output_file)
+    extras = None
+    if equilibrium.model_extra is not None:
+        extras = set(equilibrium.model_extra.keys())
+    vmec_utils.VmecppWOut.model_validate(equilibrium.model_dump(exclude=extras)).save(
+        output_file,
+    )
 
 
 def to_vmec2000_input_file(
