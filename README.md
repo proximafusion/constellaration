@@ -38,7 +38,11 @@ pip install constellaration
   cd constellaration
   ```
 
-2. Install the required Python dependencies:
+2. Install the required system dependencies
+   1. **On Ubuntu**: `sudo apt-get update && sudo apt-get install -y libnetcdf-dev`
+   2. **On MAC-OS**: `brew install netcdf`
+
+4. Install the required Python dependencies:
 
   ```bash
   pip install .
