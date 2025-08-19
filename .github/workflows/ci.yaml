@@ -50,3 +50,22 @@ jobs:
         run: python -m pip install .[test]
       - name: Test package
         run: python -m pytest tests/
+
+  test-results:
+    name: Test Results
+    if: always()
+    needs: [pre-commit, tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check test results
+        run: |
+          echo "Pre-commit result: ${{ needs.pre-commit.result }}"
+          echo "Tests result: ${{ needs.tests.result }}"
+
+          if [[ "${{ needs.pre-commit.result }}" == "success" && "${{ needs.tests.result }}" == "success" ]]; then
+            echo "All tests passed!"
+            exit 0
+          else
+            echo "Some tests failed!"
+            exit 1
+          fi
