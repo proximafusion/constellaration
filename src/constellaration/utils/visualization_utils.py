@@ -11,27 +11,32 @@ from plotly import subplots as plotly_subplots
 
 
 def combine_figures_side_by_side(
-    fig1: mpl_figure.Figure | axes.Axes, fig2: mpl_figure.Figure | axes.Axes
+    *figs: mpl_figure.Figure | axes.Axes,
 ) -> None:
-    """Combines two matplotlib figures or axes side by side and displays the result."""
+    """Combines any number of matplotlib figures or axes side by side and displays the
+    result."""
+
+    if not figs:
+        raise ValueError("At least one figure must be provided")
 
     # Convert axes to figures if necessary
-    fig1 = _to_figure(fig1)
-    fig2 = _to_figure(fig2)
+    converted_figs = [_to_figure(fig) for fig in figs]
 
-    img1 = _figure_to_image(fig1)
-    img2 = _figure_to_image(fig2)
+    # Convert all figures to images
+    images = [_figure_to_image(fig) for fig in converted_figs]
 
-    # Create a new blank image with combined width
-    combined_width = img1.width + img2.width
-    combined_height = max(img1.height, img2.height)
+    # Calculate combined dimensions
+    combined_width = sum(img.width for img in images)
+    combined_height = max(img.height for img in images)
     combined_img = Image.new(
         "RGB", (combined_width, combined_height), color=(255, 255, 255)
     )
 
-    # Paste both images side by side
-    combined_img.paste(img1, (0, 0))
-    combined_img.paste(img2, (img1.width, 0))
+    # Paste all images side by side
+    x_offset = 0
+    for img in images:
+        combined_img.paste(img, (x_offset, 0))
+        x_offset += img.width
 
     ipd.display(combined_img)
 

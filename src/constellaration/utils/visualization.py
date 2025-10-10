@@ -140,6 +140,7 @@ def plot_flux_surfaces(
     surfaces: list[float] | None = None,
     ntheta: int = 128,
     nphi: int = 4,
+    title: str | None = None,
 ) -> mpl_figure.Figure:
     """Plot the shape of the selected flux surfaces.
 
@@ -151,6 +152,7 @@ def plot_flux_surfaces(
             be used. Defaults to None.
         ntheta: the number of poloidal points. Defaults to 128.
         nphi: the number of toroidal points. Defaults to 4.
+        title: title for the plot. If None, no title is added. Defaults to None.
 
     Returns:
         The figure with the flux surfaces plotted.
@@ -201,4 +203,6 @@ def plot_flux_surfaces(
     ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False, ncol=1)
     ax.set_xlabel("R [m]")
     ax.set_ylabel("Z [m]")
+    if title is not None:
+        ax.set_title(title)
     return fig
