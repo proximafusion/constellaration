@@ -47,6 +47,18 @@ def evaluate_at_normalized_toroidal_flux(
     )
 
 
+def evaluate_volume_average(profile: FluxPowerSeriesProfile) -> float:
+    return sum(a_n / (n + 1) for n, a_n in enumerate(profile.coefficients))
+
+
+def scale(
+    profile: FluxPowerSeriesProfile, scale_factor: float
+) -> FluxPowerSeriesProfile:
+    return FluxPowerSeriesProfile(
+        coefficients=[coeff * scale_factor for coeff in profile.coefficients]
+    )
+
+
 def _evaluate_nth_derivative(
     profile: FluxPowerSeriesProfile, n: int
 ) -> FluxPowerSeriesProfile:
