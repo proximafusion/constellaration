@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from typing import Sequence
 
 import jaxtyping as jt
@@ -9,7 +10,7 @@ from typing_extensions import Self
 from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.geometry import surface_utils
-from constellaration.utils.types import NpOrJaxArray
+from constellaration.utils.types import NpOrJaxArray, ScalarFloat
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 FourierModes = jt.Int[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
@@ -585,7 +586,7 @@ def build_mask(
 
 def get_named_mode_values(
     boundary: SurfaceRZFourier,
-) -> dict[str, float]:
+) -> Mapping[str, ScalarFloat]:
     """Extract the Fourier mode values from a SurfaceRZFourier object and return them as
     a dictionary with named keys.
 
@@ -673,7 +674,7 @@ def get_named_mode_values(
 
 
 def boundary_from_named_modes(
-    named_fourier_modes: dict[str, float],
+    named_fourier_modes: Mapping[str, ScalarFloat],
     is_stellarator_symmetric: bool,
     n_field_periods: int,
 ) -> SurfaceRZFourier:
@@ -732,6 +733,316 @@ def boundary_from_named_modes(
         z_cos=z_cos,
         n_field_periods=n_field_periods,
         is_stellarator_symmetric=is_stellarator_symmetric,
+    )
+
+
+def shift_in_angular_variables(
+    surface: SurfaceRZFourier,
+    delta_theta: float,
+    delta_phi: float,
+) -> SurfaceRZFourier:
+    r"""Shifts the surface in the angular variables $\theta$ and $\phi$. Effectively, the
+    3D shape of the surface is not affected; only the Fourier coefficients are shifted.
+
+    Angular Shifts:
+
+        If you apply a phase shift $\Delta\theta$ to $\theta$ and $\Delta\phi$ to $\phi$,
+        the transformed coordinates become:
+
+        ... math::
+            \theta' = \theta + \Delta\theta \,
+
+            \phi' = \phi + \Delta\phi \,
+
+    Impact on the Equations:
+
+        The original equations for $R(\theta, \phi)$ and $Z(\theta, \phi)$ involve terms like:
+
+        ... math::
+
+            \cos\left(m\theta - n_{\text{fp}} n\phi\right) \,
+
+            \sin\left(m\theta - n_{\text{fp}} n\phi\right) \,
+
+    After applying the phase shifts, these terms transform as follows:
+
+        ... math::
+
+            \cos\left(m(\theta + \Delta\theta) - n_{\text{fp}} n(\phi + \Delta\phi)\right) \,
+
+            \sin\left(m(\theta + \Delta\theta) - n_{\text{fp}} n(\phi + \Delta\phi)\right) \,
+
+    Transformed Trigonometric Expressions:
+
+        Using trigonometric identities, these expressions become:
+
+        ... math::
+
+            \cos\left(m\theta - n_{\text{fp}} n\phi + m\Delta\theta - n_{\text{fp}} n\Delta\phi\right) \,
+
+            \sin\left(m\theta - n_{\text{fp}} n\phi + m\Delta\theta - n_{\text{fp}} n\Delta\phi\right) \,
+
+    Transformation of Fourier Coefficients:
+
+        The phase shifts $\Delta\theta$ and $\Delta\phi$ result in a modification of the
+        Fourier coefficients as follows:
+
+        For :math:`r_{c,m,n}`:
+
+        ... math::
+            r'_{c,m,n} = r_{c,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) - r_{s,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
+
+        For :math:`r_{s,m,n}`:
+
+        ... math::
+            r'_{s,m,n} = r_{s,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) + r_{c,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
+
+        For :math:`z_{s,m,n}`:
+
+        ... math::
+            z'_{s,m,n} = z_{s,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) + z_{c,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
+
+        For :math: `z_{c,m,n}`:
+
+        ... math::
+            z'_{c,m,n} = z_{c,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) - z_{s,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
+
+    Args:
+
+        surface: The input `SurfaceRZFourier` object to be shifted.
+        delta_theta: The shift in the :math:`\theta` angle.
+        delta_phi: The shift in the :math:`\phi` angle.
+
+    Returns:
+
+        A new `SurfaceRZFourier` object with the surface shifted in the angular variables.
+    """  # noqa: E501
+    nfp = surface.n_field_periods
+
+    # Compute the phase shift for each (m, n) pair
+    phase_shift = (
+        surface.poloidal_modes * delta_theta - nfp * surface.toroidal_modes * delta_phi
+    )
+    cos_shift = jnp.cos(phase_shift)
+    sin_shift = jnp.sin(phase_shift)
+
+    # Apply shifts to r_cos and r_sin
+    r_cos_new: FourierCoefficients = surface.r_cos * cos_shift
+    r_sin_new: FourierCoefficients = surface.r_cos * sin_shift
+    if surface.r_sin is not None:
+        r_sin_new += surface.r_sin * cos_shift
+        r_cos_new -= surface.r_sin * sin_shift
+
+    # Apply shifts to z_sin and z_cos
+    z_sin_new: FourierCoefficients = surface.z_sin * cos_shift
+    z_cos_new: FourierCoefficients = -surface.z_sin * sin_shift
+    if surface.z_cos is not None:
+        z_cos_new += surface.z_cos * cos_shift
+        z_sin_new += surface.z_cos * sin_shift
+
+    is_stellarator_symmetric = surface.is_stellarator_symmetric
+    if r_sin_new is not None or z_cos_new is not None:
+        if not jnp.any(r_sin_new) and not jnp.any(
+            z_cos_new
+        ):  # Check if all zeros and make it stellarator symmetric
+            return surface.model_copy(
+                update=dict(
+                    r_cos=r_cos_new,
+                    z_sin=z_sin_new,
+                    is_stellarator_symmetric=True,
+                )
+            )
+        is_stellarator_symmetric = False
+
+    return surface.model_copy(
+        update=dict(
+            r_cos=r_cos_new,
+            r_sin=r_sin_new,
+            z_cos=z_cos_new,
+            z_sin=z_sin_new,
+            is_stellarator_symmetric=is_stellarator_symmetric,
+        )
+    )
+
+
+def _generate_stellarator_symmetric_augmentation_from_named_modes(
+    named_rz_fourier_modes: Mapping[str, ScalarFloat],
+    augmentation_switches: list[bool] | None = None,
+    seed: int | None = None,
+) -> dict[str, ScalarFloat]:
+    """Generates a stellarator symmetric augmentation from the input named modes. Named
+    modes should follow the convention of `get_named_mode_values`. That means that the
+    keys should be of the form `r_cos(m, n)` or `z_sin(m, n)`. The function will return
+    a dictionary containing the named modes of the stellarator symmetric augmentation.
+
+    The order of the augmentation switches that can be simulatanously applied (by)
+    1. Flipping the sign of z_sin coefficients (mirror symmetry about the z = 0 plane)
+    2. Flipping the sign of odd toroidal modes (shift the surface toroidally
+        by np.pi / n_field_periods)
+    3. Flipping the sign of odd poloidal modes (shift the surface poloidally by
+        np.pi)
+
+    If the augmentation switches are not provided, a random augmentation will be
+    generated using the `seed` parameter.
+
+    Args:
+        named_rz_fourier_modes: The named modes to augment.
+        augmentation_switches: A list of booleans indicating which augmentations to
+            apply.
+        seed: The seed for the random augmentation.
+
+    Returns:
+        A dictionary containing the named modes of the stellarator symmetric
+            augmentation.
+
+    Raises:
+        ValueError: If the input named modes are not stellarator symmetric.
+        ValueError: If the input named modes do not contain the mode r_cos(0, 0).
+
+    Example:
+    ```python
+
+    named_rz_fourier_modes = {
+        'r_cos(0, 0)': 1.17402691,
+        'r_cos(0, 1)': 0.29914774,
+        'r_cos(1, -1)': -0.00545333,
+        'r_cos(1, 0)': 0.14967022,
+        'r_cos(1, 1)': -0.0997095,
+        'z_sin(0, 1)': -0.24121311,
+        'z_sin(1, -1)': -0.02070752,
+        'z_sin(1, 0)': 0.26476756,
+        'z_sin(1, 1)': 0.13379441,
+    }
+    augmentation_switches = [True, False, True]  # flip z_sin and flip odd poloidal
+        modes
+
+    augmentations = _generate_stellarator_symmetric_augmentation_from_named_modes(
+        named_rz_fourier_modes, augmentation_switches)
+
+    print(augmentations)
+    # {'r_cos(0, 0)': 1.17402691,
+    # 'r_cos(0, 1)': 0.29914774,
+    # 'r_cos(1, -1)': 0.00545333,
+    # 'r_cos(1, 0)': -0.14967022,
+    # 'r_cos(1, 1)': 0.0997095,
+    # 'z_sin(0, 1)': 0.24121311,
+    # 'z_sin(1, -1)': -0.02070752,
+    # 'z_sin(1, 0)': 0.26476756,
+    # 'z_sin(1, 1)': 0.13379441}
+    ```
+    """
+
+    # Utility functions
+    def get_m_n_from_key(key: str) -> tuple[int, int]:
+        m, n = tuple(map(int, key.split("(")[1].split(")")[0].split(", ")))
+        return m, n
+
+    def flip_n_odd(
+        named_modes: Mapping[str, NpOrJaxArray | ScalarFloat],
+    ) -> dict[str, NpOrJaxArray | ScalarFloat]:
+        """Flips odd toroidal modes."""
+        augmentation = dict(named_modes)
+        for key, value in augmentation.items():
+            _, n = get_m_n_from_key(key)
+            if abs(n) % 2 == 1:
+                augmentation[key] = -value
+        return augmentation
+
+    def flip_m_odd(
+        named_modes: Mapping[str, NpOrJaxArray | ScalarFloat],
+    ) -> dict[str, NpOrJaxArray | ScalarFloat]:
+        """Flips odd poloidal modes."""
+        augmentation = dict(named_modes)
+        for key, value in augmentation.items():
+            m, _ = get_m_n_from_key(key)
+            if m % 2 == 1:
+                augmentation[key] = -value
+        return augmentation
+
+    # Some checks on the input named modes
+    # Check that the input named modes contain the mode r_cos(0, 0)
+    if named_rz_fourier_modes.get("r_cos(0, 0)") is None:
+        raise ValueError("The input named modes should contain the mode r_cos(0, 0)")
+
+    # Check that the input named modes are stellarator symmetric (do not contain modes
+    # with z_cos or r_sin)
+    if any(
+        key.startswith("z_cos") or key.startswith("r_sin")
+        for key in named_rz_fourier_modes.keys()
+    ):
+        raise ValueError(
+            "The input named modes should be stellarator symmetric. "
+            "They should not contain modes with z_cos or r_sin."
+        )
+
+    # If the augmentation switches are not provided, generate a random augmentation
+
+    if augmentation_switches is None:
+        rng = np.random.default_rng(seed=seed)
+        # A consecutive coin flip for each augmentation that can be applied
+        augmentation_switches = rng.choice([True, False], size=(3)).tolist()
+
+    # Apply consecutively augmentations on the input named modes according to the
+    # switches
+
+    stellarator_symmetric_augmentation = dict(named_rz_fourier_modes)
+
+    assert augmentation_switches is not None
+    for ind, switch in enumerate(augmentation_switches):
+        if switch:
+            if ind == 0:
+                # Flipping the sign of z_sin coefficients
+                for key, value in stellarator_symmetric_augmentation.items():
+                    if key.startswith("z_sin") and get_m_n_from_key(key) != (0, 0):
+                        stellarator_symmetric_augmentation[key] = -value
+            elif ind == 1:
+                stellarator_symmetric_augmentation = flip_n_odd(
+                    stellarator_symmetric_augmentation
+                )
+            else:
+                # Flipping the sign of coefficients where m is odd
+                stellarator_symmetric_augmentation = flip_m_odd(
+                    stellarator_symmetric_augmentation
+                )
+    return stellarator_symmetric_augmentation
+
+
+def generate_stellarator_symmetric_augmentation(
+    surface: SurfaceRZFourier,
+    augmentation_switches: list[bool] | None = None,
+    seed: int | None = None,
+) -> SurfaceRZFourier:
+    """Generates a stellarator symmetric augmentation of the input surface.
+
+    The order of the augmentation switches that can be simulatanously applied (by)
+    1. Flipping the sign of z_sin coefficients (mirror symmetry about the z = 0 plane)
+    2. Flipping the sign of odd toroidal modes (shift the surface toroidally
+        by np.pi / n_field_periods)
+    3. Flipping the sign of odd poloidal modes (shift the surface poloidally by
+        np.pi)
+
+    If the augmentation switches are not provided, a random augmentation will be
+    generated using the `seed` parameter.
+
+    Args:
+        named_rz_fourier_modes: The named modes to augment.
+        augmentation_switches: A list of booleans indicating which augmentations to
+            apply.
+        seed: The seed for the random augmentation.
+
+    Returns:
+        A new `SurfaceRZFourier` object with the stellarator symmetric augmentation.
+    """
+    if not surface.is_stellarator_symmetric:
+        raise ValueError("The input surface should be stellarator symmetric.")
+
+    named_rz_fourier_modes = get_named_mode_values(surface)
+    return boundary_from_named_modes(
+        _generate_stellarator_symmetric_augmentation_from_named_modes(
+            named_rz_fourier_modes, augmentation_switches, seed
+        ),
+        is_stellarator_symmetric=True,
+        n_field_periods=surface.n_field_periods,
     )
 
 

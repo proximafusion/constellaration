@@ -7,6 +7,74 @@ import pytest
 from constellaration.geometry import surface_rz_fourier
 
 
+@pytest.fixture
+def two_mode_surface() -> surface_rz_fourier.SurfaceRZFourier:
+    r_cos = np.array(
+        [
+            [0.0, 0.0, 1.17402691, 0.29914774, 0.01072749],
+            [0.00175617, -0.00545333, 0.14967022, -0.0997095, -0.01166579],
+            [0.00274853, -0.00707297, 0.01615058, 0.03462255, 0.01252142],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.0, -0.24121311, -0.01337604],
+            [0.00701798, -0.02070752, 0.26476756, 0.13379441, 0.00483678],
+            [0.00229368, -0.01336017, 0.02373038, 0.026118, -0.00429497],
+        ]
+    )
+    return surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, n_field_periods=3, is_stellarator_symmetric=True
+    )
+
+
+@pytest.fixture
+def three_mode_surface() -> surface_rz_fourier.SurfaceRZFourier:
+    r_cos = np.array(
+        [
+            [0.0, 0.0, 0.0, 1.17402691, 0.29914774, 0.01072749, 0.001],
+            [
+                0.001,
+                0.00175617,
+                -0.00545333,
+                0.14967022,
+                -0.0997095,
+                -0.01166579,
+                0.001,
+            ],
+            [0.001, 0.00274853, -0.00707297, 0.01615058, 0.03462255, 0.01252142, 0.001],
+            [0.001, 0.00027485, -0.00070797, 0.00161058, 0.00346255, 0.00252142, 0.001],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.0, 0.0, -0.24121311, -0.01337604, -0.001],
+            [
+                0.001,
+                0.00701798,
+                -0.02070752,
+                0.26476756,
+                0.13379441,
+                0.00483678,
+                -0.002,
+            ],
+            [0.001, 0.00229368, -0.01336017, 0.02373038, 0.026118, -0.00429497, 0.002],
+            [
+                -0.001,
+                0.00027485,
+                -0.00070797,
+                0.00161058,
+                0.00346255,
+                0.00252142,
+                0.002,
+            ],
+        ]
+    )
+    return surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, n_field_periods=3, is_stellarator_symmetric=True
+    )
+
+
 def test_infinity_norm_scaling_basic():
     poloidal_modes = np.array([0, 1, 2, 3])
     toroidal_modes = np.array([0, 1, 2, 3])
@@ -662,3 +730,291 @@ def test_from_points() -> None:
         rtol=0.0,
     )
     assert surface.is_stellarator_symmetric == fitted_surface.is_stellarator_symmetric
+
+
+def test_generate_stellarator_symmetric_augmentations_when_flipping_z_coeffs(
+    two_mode_surface,
+):
+    """Equivalent to flipping on the z axis."""
+
+    # Get grid points for comparison
+    surface = two_mode_surface
+    theta = np.linspace(0, 2 * np.pi, 50)
+    phi = np.linspace(0, 2 * np.pi * surface.n_field_periods / 2, 50)
+    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing="ij")
+    theta_phi_grid = np.stack([theta_grid, phi_grid], axis=-1)
+    grid = surface_rz_fourier.evaluate_points_xyz(surface, theta_phi_grid).reshape(
+        -1, 3
+    )
+
+    # Flip the grid on the z axis
+    grid[:, 2] = -grid[:, 2]
+
+    # Generate data augmentations
+    augmentation = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        surface, [True]
+    )
+    augmentation_grid = surface_rz_fourier.evaluate_points_xyz(
+        augmentation, theta_phi_grid
+    ).reshape(-1, 3)
+
+    np.testing.assert_allclose(grid, augmentation_grid, atol=1e-14)
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_no_augmentation():
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    augmentation_switches = [False, False, False]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches=augmentation_switches
+    )
+
+    assert augmented_modes == named_modes
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_flip_z_sin():
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    augmentation_switches = [True, False, False]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches=augmentation_switches
+    )
+
+    expected_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": -0.3,
+        "z_sin(1, 1)": -0.7,
+    }
+    assert augmented_modes == expected_modes
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_flip_abs_n1():
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": 0.4,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(1, -1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    augmentation_switches = [False, True, False]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches=augmentation_switches
+    )
+
+    expected_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": -0.4,
+        "r_cos(1, 1)": -0.5,
+        "z_sin(1, -1)": -0.3,
+        "z_sin(1, 1)": -0.7,
+    }
+    assert augmented_modes == expected_modes
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_flip_m1():
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": 0.4,
+        "r_cos(1, 1)": 0.5,
+        "r_cos(2, 1)": 0.2,
+        "z_sin(1, -1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    augmentation_switches = [False, False, True]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches=augmentation_switches
+    )
+
+    expected_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": -0.4,
+        "r_cos(1, 1)": -0.5,
+        "r_cos(2, 1)": 0.2,
+        "z_sin(1, -1)": -0.3,
+        "z_sin(1, 1)": -0.7,
+    }
+    assert augmented_modes == expected_modes
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_multiple_switches():  # noqa: E501
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": 0.4,
+        "r_cos(1, 1)": 0.5,
+        "r_cos(2, 1)": 0.2,
+        "z_sin(1, -1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    augmentation_switches = [True, False, True]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches=augmentation_switches
+    )
+
+    expected_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, -1)": -0.4,
+        "r_cos(1, 1)": -0.5,
+        "r_cos(2, 1)": 0.2,
+        "z_sin(1, -1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    assert augmented_modes == expected_modes
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_random_seed():
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": 0.3,
+        "z_sin(1, 1)": 0.7,
+    }
+    seed = 42
+
+    augmented_modes1 = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, seed=seed
+    )
+    augmented_modes2 = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, seed=seed
+    )
+
+    assert augmented_modes1 == augmented_modes2
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_non_stellarator_symmetric():  # noqa: E501
+    named_modes = {
+        "r_cos(0, 0)": 1.0,
+        "z_cos(1, 1)": 0.5,
+    }
+    with pytest.raises(
+        ValueError, match="The input named modes should be stellarator symmetric."
+    ):
+        surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(
+            named_modes
+        )
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_missing_r_cos_0_0():  # noqa: E501
+    named_modes = {
+        "r_cos(1, 1)": 0.5,
+        "z_sin(0, 1)": 0.3,
+    }
+    with pytest.raises(
+        ValueError,
+        match="The input named modes should contain the mode r_cos\\(0, 0\\)",
+    ):
+        surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(
+            named_modes
+        )
+
+
+def test_generate_stellarator_symmetric_augmentation_from_named_modes_example():
+    named_modes = {
+        "r_cos(0, 0)": 1.17402691,
+        "r_cos(0, 1)": 0.29914774,
+        "r_cos(1, -1)": -0.00545333,
+        "r_cos(1, 0)": 0.14967022,
+        "r_cos(1, 1)": -0.0997095,
+        "z_sin(0, 1)": -0.24121311,
+        "z_sin(1, -1)": -0.02070752,
+        "z_sin(1, 0)": 0.26476756,
+        "z_sin(1, 1)": 0.13379441,
+    }
+    augmentation_switches = [True, False, True]
+
+    augmented_modes = surface_rz_fourier._generate_stellarator_symmetric_augmentation_from_named_modes(  # noqa: E501
+        named_modes, augmentation_switches
+    )
+
+    expected_modes = {
+        "r_cos(0, 0)": 1.17402691,
+        "r_cos(0, 1)": 0.29914774,
+        "r_cos(1, -1)": 0.00545333,
+        "r_cos(1, 0)": -0.14967022,
+        "r_cos(1, 1)": 0.0997095,
+        "z_sin(0, 1)": 0.24121311,
+        "z_sin(1, -1)": -0.02070752,
+        "z_sin(1, 0)": 0.26476756,
+        "z_sin(1, 1)": 0.13379441,
+    }
+    assert augmented_modes == expected_modes
+
+
+@pytest.mark.parametrize(
+    "surface_fixture",
+    ["three_mode_surface", "two_mode_surface"],
+)
+def test_generate_stellarator_symmetric_augmentations_when_flipping_abs_n_is_1_coeffs(
+    request, surface_fixture
+):
+    """Equivalent to rotating toroidaly by pi/nfp."""
+
+    # Get grid points for comparison
+    surface = request.getfixturevalue(surface_fixture)
+    theta = np.linspace(0, 2 * np.pi, 50)
+    phi = np.linspace(0, 2 * np.pi * surface.n_field_periods / 2, 50)
+    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing="ij")
+    theta_phi_grid = np.stack([theta_grid, phi_grid], axis=-1)
+
+    # Shift the surface by pi / nfp in the toroidal direction
+    shifted_surface = surface_rz_fourier.shift_in_angular_variables(
+        surface, 0, np.pi / surface.n_field_periods
+    )
+    shifted_grid = surface_rz_fourier.evaluate_points_xyz(
+        shifted_surface, theta_phi_grid
+    ).reshape(-1, 3)
+
+    # Generate data augmentations
+    augmentation = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        surface, [False, True, False, False]
+    )
+    augmentation_grid = surface_rz_fourier.evaluate_points_xyz(
+        augmentation, theta_phi_grid
+    ).reshape(-1, 3)
+
+    np.testing.assert_allclose(shifted_grid, augmentation_grid, atol=1e-14)
+
+
+@pytest.mark.parametrize(
+    "surface_fixture",
+    ["three_mode_surface", "two_mode_surface"],
+)
+def test_generate_stellarator_symmetric_augmentations_when_flipping_m_is_1_coeffs(
+    request, surface_fixture
+):
+    """Equivalent to shifting the surface by pi poloidally."""
+    # Get grid points for comparison
+    surface = request.getfixturevalue(surface_fixture)
+    theta = np.linspace(0, 2 * np.pi, 50)
+    phi = np.linspace(0, 2 * np.pi * surface.n_field_periods / 2, 50)
+    theta_grid, phi_grid = np.meshgrid(theta, phi, indexing="ij")
+    theta_phi_grid = np.stack([theta_grid, phi_grid], axis=-1)
+
+    # Shift the surface by pi in the poloidal direction
+    shifted_surface = surface_rz_fourier.shift_in_angular_variables(surface, np.pi, 0)
+    shifted_grid = surface_rz_fourier.evaluate_points_xyz(
+        shifted_surface, theta_phi_grid
+    ).reshape(-1, 3)
+
+    # Generate data augmentations
+    augmentation = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        surface, [False, False, True, False]
+    )
+    third_augmentation_grid = surface_rz_fourier.evaluate_points_xyz(
+        augmentation, theta_phi_grid
+    ).reshape(-1, 3)
+
+    np.testing.assert_allclose(shifted_grid, third_augmentation_grid, atol=1e-14)
