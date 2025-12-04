@@ -250,7 +250,7 @@ def run_boozer(
     boozer.run()
 
     return BoozerOutput(
-        is_stellarator_symmetric=boozer.bx.asym,
+        is_stellarator_symmetric=not boozer.bx.asym,
         n_field_periods=boozer.bx.nfp,
         xm_b=boozer.bx.xm_b,
         xn_b=boozer.bx.xn_b,
