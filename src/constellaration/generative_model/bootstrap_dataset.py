@@ -282,7 +282,7 @@ def _n_components_that_minimizes_bic(
     """Finds the number of components that minimizes BIC for a GMM."""
     n_components_to_try = np.arange(2, 50)
     gmm_candidates = [
-        mixture.GaussianMixture(n, random_state=seed) for n in n_components_to_try
+        mixture.GaussianMixture(int(n), random_state=seed) for n in n_components_to_try
     ]
     gmm_candidates_bics = []
     for i, model in enumerate(gmm_candidates):

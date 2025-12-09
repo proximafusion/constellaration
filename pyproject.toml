@@ -36,12 +36,11 @@ dependencies = [
   "matplotlib==3.9.2",
   "nbformat",
   "nevergrad",
-  "numpy==2.1.3",
+  "numpy>=2.1.3",
   "orjson==3.10.16",
   "plotly<7.0.0",
   "pydantic",
-  # need an unreleased version to fix `cma` compatibility with numpy 2.0
-  "pymoo==0.6.1.5.dev0",
+  "pymoo==0.6.1.5",
   "pandas==2.2.3",
   "qicna==0.3.4",
   "scipy",
@@ -52,7 +51,7 @@ dependencies = [
   "simsopt==1.8.1; python_version < '3.13'",
   "simsopt==1.9.0; python_version >= '3.13'",
   "seaborn==0.13.2",
-  "vmecpp==0.4.7",
+  "vmecpp==0.4.11",
 ]
 
 [tool.hatch.metadata]
