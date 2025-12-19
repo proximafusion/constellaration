@@ -1018,3 +1018,75 @@ def test_generate_stellarator_symmetric_augmentations_when_flipping_m_is_1_coeff
     ).reshape(-1, 3)
 
     np.testing.assert_allclose(shifted_grid, third_augmentation_grid, atol=1e-14)
+
+
+def test_compute_normal_displacement_zero_for_identical_surfaces() -> None:
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.5]]),
+        z_sin=np.array([[0.0], [0.5]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    distances = surface_rz_fourier.compute_normal_displacement(
+        target_surface=surface,
+        comparison_surface=surface,
+        n_poloidal_points=4,
+        n_toroidal_points=3,
+    )
+
+    np.testing.assert_allclose(np.asarray(distances), 0.0, atol=1e-12)
+
+
+def test_compute_normal_displacement_matches_radial_offset() -> None:
+    delta = 0.2
+    target_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    comparison_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0 + delta], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    distances = surface_rz_fourier.compute_normal_displacement(
+        target_surface=target_surface,
+        comparison_surface=comparison_surface,
+        n_poloidal_points=5,
+        n_toroidal_points=4,
+    )
+
+    np.testing.assert_allclose(np.max(np.abs(distances)), delta, atol=1e-7)
+
+
+def test_compute_normal_displacement_raises_for_mismatched_parameters() -> None:
+    base_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.5]]),
+        z_sin=np.array([[0.0], [0.5]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+
+    mismatched_field_periods = base_surface.model_copy(update=dict(n_field_periods=2))
+    with pytest.raises(ValueError, match="field periods"):
+        surface_rz_fourier.compute_normal_displacement(
+            target_surface=base_surface,
+            comparison_surface=mismatched_field_periods,
+            n_poloidal_points=3,
+            n_toroidal_points=2,
+        )
+
+    mismatched_symmetry = base_surface.model_copy(
+        update=dict(is_stellarator_symmetric=False)
+    )
+    with pytest.raises(ValueError, match="stellarator symmetry"):
+        surface_rz_fourier.compute_normal_displacement(
+            target_surface=base_surface,
+            comparison_surface=mismatched_symmetry,
+            n_poloidal_points=3,
+            n_toroidal_points=2,
+        )

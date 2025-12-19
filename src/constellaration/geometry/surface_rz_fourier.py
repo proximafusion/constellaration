@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Sequence
 
+import jax
 import jaxtyping as jt
 import numpy as np
 import pydantic
@@ -435,6 +436,177 @@ def evaluate_dxyz_dtheta(
     dy_dtheta = dr_dtheta * np.sin(phi)
     dz_dtheta = dz_dtheta
     return np.stack((dx_dtheta, dy_dtheta, dz_dtheta), axis=-1)
+
+
+def evaluate_normal(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[np.ndarray, "*dims 2"],
+) -> jt.Float[jt.Array, "*dims 3"]:
+    """Evaluate the normal vector of the surface at the given theta and phi coordinates.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The normal vector of the surface at the given theta and phi coordinates.
+        The last dimension indexes the components of the normal vector.
+    """
+    return jnp.cross(
+        evaluate_dxyz_dtheta(surface, theta_phi),
+        evaluate_dxyz_dphi(surface, theta_phi),
+        axis=-1,
+    )
+
+
+def evaluate_unit_normal(
+    surface: SurfaceRZFourier,
+    theta_phi: jt.Float[np.ndarray, "*dims 2"],
+) -> jt.Float[jt.Array, "*dims 3"]:
+    """Evaluate the unit normal vector (norm = 1) of the surface at the given theta and
+    phi coordinates.
+
+    Args:
+        surface: The surface to evaluate.
+        theta_phi: The theta and phi coordinates at which to evaluate the surface.
+            The last dimension is supposed to index theta and phi.
+
+    Returns:
+        The unit normal vector of the surface at the given theta and phi coordinates.
+        The last dimension indexes the components of the unit normal vector.
+    """
+    normal = evaluate_normal(surface, theta_phi)
+    return normal / jnp.linalg.norm(normal, axis=-1, keepdims=True)
+
+
+def compute_normal_displacement(
+    target_surface: SurfaceRZFourier,
+    comparison_surface: SurfaceRZFourier,
+    n_poloidal_points: int,
+    n_toroidal_points: int,
+) -> jt.Float[jt.Array, " n_points"]:
+    """Compute the normal displacement between two surfaces.
+
+    The first surface is treated as the target surface. The returned distances are
+    the normal components of the vector from the target surface to the comparison
+    surface evaluated on the specified grid.
+
+    Args:
+        target_surface: Reference surface used to define the normals.
+        comparison_surface: Surface whose points are projected onto the normals of
+            the target surface.
+        n_poloidal_points: Number of poloidal grid points used for evaluation.
+        n_toroidal_points: Number of toroidal grid points used for evaluation.
+
+    Returns:
+        A 1D array of normal distances with length ``n_poloidal_points *
+        n_toroidal_points``.
+
+    Raises:
+        ValueError: If the surfaces have different field periods or stellarator
+            symmetry settings.
+    """
+
+    if target_surface.n_field_periods != comparison_surface.n_field_periods:
+        raise ValueError("Surfaces must have the same number of field periods.")
+
+    if (
+        target_surface.is_stellarator_symmetric
+        != comparison_surface.is_stellarator_symmetric
+    ):
+        raise ValueError("Surfaces must share the same stellarator symmetry.")
+
+    phi_upper_bound = (
+        2.0
+        * jnp.pi
+        / target_surface.n_field_periods
+        / (1.0 + int(target_surface.is_stellarator_symmetric))
+    )
+    theta_phi = surface_utils.make_theta_phi_grid(
+        n_theta=n_poloidal_points,
+        n_phi=n_toroidal_points,
+        phi_upper_bound=phi_upper_bound,
+    )
+
+    unit_normal = jnp.asarray(
+        evaluate_unit_normal(
+            surface=target_surface,
+            theta_phi=theta_phi,
+        )
+    )
+    xyz_target = jnp.asarray(
+        evaluate_points_xyz(
+            target_surface,
+            theta_phi=theta_phi,
+        )
+    )
+
+    phi_indices = jnp.arange(n_toroidal_points)[None, :].repeat(
+        n_poloidal_points, axis=0
+    )
+
+    def normal_distance_at_phi(
+        point: jt.Float[jt.Array, "3"], phi_index: jt.Int[jt.Array, ""]
+    ) -> jt.Float[jt.Array, ""]:
+        xyz_at_phi = xyz_target[:, phi_index, :]
+        unit_normal_at_phi = unit_normal[:, phi_index, :]
+        distance = xyz_at_phi - point
+        closest_theta_index = jnp.argmin(jnp.sum(distance * distance, axis=-1))
+
+        return jnp.dot(
+            point - xyz_at_phi[closest_theta_index],
+            unit_normal_at_phi[closest_theta_index],
+        )
+
+    xyz_comparison = jnp.asarray(
+        evaluate_points_xyz(
+            comparison_surface,
+            theta_phi=theta_phi,
+        )
+    )
+    xyz_comparison_reshaped = xyz_comparison.reshape(
+        n_poloidal_points, n_toroidal_points, 3
+    )
+    xyz_comparison_flat = xyz_comparison_reshaped.reshape(-1, 3)
+    phi_indices_flat = phi_indices.reshape(-1)
+
+    return jax.vmap(normal_distance_at_phi)(xyz_comparison_flat, phi_indices_flat)
+
+
+def compute_normal_displacement_distance(
+    surface_1: SurfaceRZFourier,
+    surface_2: SurfaceRZFourier,
+    n_poloidal_points: int,
+    n_toroidal_points: int,
+) -> float:
+    """Compute the average normal displacement distance between two surfaces.
+
+    Args:
+        surface_1: First surface.
+        surface_2: Second surface.
+        n_poloidal_points: Number of poloidal grid points used for evaluation.
+        n_toroidal_points: Number of toroidal grid points used for evaluation.
+
+    Returns:
+        The average normal displacement distance between the two surfaces.
+    """
+
+    forward_distances = compute_normal_displacement(
+        target_surface=surface_1,
+        comparison_surface=surface_2,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    backward_distances = compute_normal_displacement(
+        target_surface=surface_2,
+        comparison_surface=surface_1,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    average_forward_distance = jnp.mean(jnp.abs(forward_distances))
+    average_backward_distance = jnp.mean(jnp.abs(backward_distances))
+    return float(0.5 * (average_forward_distance + average_backward_distance))
 
 
 def set_max_mode_numbers(
@@ -945,7 +1117,7 @@ def _generate_stellarator_symmetric_augmentation_from_named_modes(
         for key, value in augmentation.items():
             _, n = get_m_n_from_key(key)
             if abs(n) % 2 == 1:
-                augmentation[key] = -value
+                augmentation[key] = -1 * value
         return augmentation
 
     def flip_m_odd(
@@ -956,7 +1128,7 @@ def _generate_stellarator_symmetric_augmentation_from_named_modes(
         for key, value in augmentation.items():
             m, _ = get_m_n_from_key(key)
             if m % 2 == 1:
-                augmentation[key] = -value
+                augmentation[key] = -1 * value
         return augmentation
 
     # Some checks on the input named modes
