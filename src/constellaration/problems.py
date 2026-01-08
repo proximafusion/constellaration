@@ -171,7 +171,7 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
                 metrics.aspect_ratio - self._aspect_ratio_upper_bound,
                 metrics.average_triangularity - self._average_triangularity_upper_bound,
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - metrics.edge_rotational_transform_over_n_field_periods,
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
             ]
         )
         return constraint_violations / np.abs(constraint_targets)
@@ -245,7 +245,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
             [
                 metrics.aspect_ratio - self._aspect_ratio_upper_bound,
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - metrics.edge_rotational_transform_over_n_field_periods,
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
                 np.log10(metrics.qi) - self._log10_qi_upper_bound,
                 metrics.edge_magnetic_mirror_ratio
                 - self._edge_magnetic_mirror_ratio_upper_bound,
@@ -381,7 +381,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
         constraint_violations = np.array(
             [
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - metrics.edge_rotational_transform_over_n_field_periods,
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
                 np.log10(metrics.qi) - self._log10_qi_upper_bound,
                 metrics.edge_magnetic_mirror_ratio
                 - self._edge_magnetic_mirror_ratio_upper_bound,
