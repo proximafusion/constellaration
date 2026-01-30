@@ -1,4 +1,6 @@
+import base64
 import enum
+import io
 import pathlib
 import tempfile
 
@@ -14,6 +16,50 @@ from constellaration.mhd import flux_power_series, ideal_mhd_parameters, vmec_se
 
 # We know that we are discarding coefficients, reduce output clutter.
 vmecpp.logger.setLevel("ERROR")
+
+
+def _deserialize_np_from_bytes(np_bytes: bytes) -> np.ndarray:
+    """Loads a numpy array from raw bytes (dapper blob format)."""
+    with io.BytesIO(np_bytes) as in_f:
+        return np.load(in_f)
+
+
+def _decode_blob_field(blob_dict: dict) -> np.ndarray:
+    """Decodes a dapper blob-encoded field to a numpy array.
+
+    Args:
+        blob_dict: dict with keys: dapper_is_blob, content, file_suffix, content_length
+
+    Returns:
+        The decoded numpy array
+    """
+    if not isinstance(blob_dict, dict) or not blob_dict.get("dapper_is_blob"):
+        raise ValueError(f"Expected a blob dict, got {type(blob_dict)}")
+
+    # Decode base64 content to bytes
+    encoded_content = blob_dict["content"]
+    decoded_bytes = base64.b64decode(encoded_content, validate=True)
+
+    # Deserialize numpy array from bytes
+    return _deserialize_np_from_bytes(decoded_bytes)
+
+
+def _decode_all_blobs_in_dict(data: dict) -> dict:
+    """Recursively decodes all blob-encoded fields in a dict.
+
+    Args:
+        data: A dict that may contain blob-encoded fields
+
+    Returns:
+        The same dict with all blob fields decoded to lists (for Pydantic)
+    """
+    for key, value in data.items():
+        if isinstance(value, dict) and value.get("dapper_is_blob") is True:
+            # Decode blob and convert to list for Pydantic validation
+            arr = _decode_blob_field(value)
+            data[key] = arr.tolist()
+    return data
+
 
 # Renamed fields for backwards compatibility. Renaming is applied first.
 RENAMED_FIELDS = {
@@ -118,10 +164,32 @@ class VmecppWOut(vmecpp.VmecWOut):
 
         return data
 
+    @classmethod
+    def decode_binary_blob_data(cls, data):
+        """Handle binary blob-encoded arrays, base64-encoded numpy arrays.
+        They are stored in dicts with the following structure:
+           - dapper_is_blob: True
+           - content: base64-encoded string
+           - file_suffix: file extension (e.g., ".npy")
+           - content_length: size in bytes
+        """
+        if isinstance(data, dict):
+            has_blob_encoded_fields = any(
+                isinstance(v, dict) and v.get("dapper_is_blob") is True
+                for v in data.values()
+            )
+
+            if has_blob_encoded_fields:
+                # Decode all blob-encoded fields to lists for Pydantic validation
+                data = _decode_all_blobs_in_dict(data)
+        return data
+
     @pydantic.model_validator(mode="before")
     @classmethod
     def ensure_backwards_compatibility(cls, data):
         """Ensure backwards compatibility with older versions of the wout file."""
+        data = cls.decode_binary_blob_data(data)
+
         # assert isinstance(data, dict)
         if "iota_half" in data:
             # Old naming convention, probably from constellaration <= 0.2.2
