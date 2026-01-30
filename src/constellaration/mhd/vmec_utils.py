@@ -1,4 +1,6 @@
+import base64
 import enum
+import io
 import pathlib
 import tempfile
 
@@ -122,8 +124,9 @@ class VmecppWOut(vmecpp.VmecWOut):
     @classmethod
     def ensure_backwards_compatibility(cls, data):
         """Ensure backwards compatibility with older versions of the wout file."""
-        # assert isinstance(data, dict)
+        assert isinstance(data, dict)
         if "iota_half" in data:
+            data = _deserialize_all_blob_content(data)
             # Old naming convention, probably from constellaration <= 0.2.2
             ns = data["DMerc"]
             assert "dVds" in data
@@ -411,3 +414,15 @@ def _inverse_fourier_transform(
         return np.sum(fourier_coefficients * np.cos(angle), axis=-1)
     elif basis == _FourierBasis.SINE:
         return np.sum(fourier_coefficients * np.sin(angle), axis=-1)
+
+
+def _deserialize_all_blob_content(data: dict) -> dict:
+    for field, value in data.items():
+        if (
+            isinstance(value, dict) and "dapper_is_blob" in value and "content" in value
+        ):
+            encoded_content = value["content"]
+            np_bytes = base64.b64decode(encoded_content)
+            with io.BytesIO(np_bytes) as in_f:
+                data[field] = np.load(in_f).tolist()
+    return data
