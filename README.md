@@ -108,10 +108,12 @@ The optimization baseline can be executed by running the individual files within
 ## Citation
 
 ```
-@article{cadena2025constellaration,
-  title={ConStellaration: A dataset of QI-like stellarator plasma boundaries and optimization benchmarks},
-  author={Cadena, Santiago A and Merlo, Andrea and Laude, Emanuel and Bauer, Alexander and Agrawal, Atul and Pascu, Maria and Savtchouk, Marija and Guiraud, Enrico and Bonauer, Lukas and Hudson, Stuart and others},
-  journal={arXiv preprint arXiv:2506.19583},
-  year={2025}
+@inproceedings{
+cadena2025constellaration,
+title={ConStellaration: A dataset of {QI}-like stellarator plasma boundaries and optimization benchmarks},
+author={Santiago A Cadena and Andrea Merlo and Emanuel Laude and Alexander Bauer and Atul Agrawal and Maria Pascu and Marija Savtchouk and Lukas Bonauer and Enrico Guiraud and Stuart R. Hudson and Markus Kaiser},
+booktitle={The Thirty-ninth Annual Conference on Neural Information Processing Systems Datasets and Benchmarks Track},
+year={2025},
+url={https://openreview.net/forum?id=NQSbGKlCpx}
 }
 ```
