@@ -31,23 +31,15 @@ class AugmentedLagrangianSettings(pydantic.BaseModel):
 def augmented_lagrangian_function(
     objective: jnp.ndarray, constraints: jnp.ndarray, state: AugmentedLagrangianState
 ) -> jnp.ndarray:
-    """Updates the augmented Lagrangian state based on the current optimization state.
-
-    This function updates the Lagrange multipliers and penalty parameters based on
-    the current constraints violation and settings.
+    """Calculates the current value of the augmented Lagrangian function.
 
     Args:
-        x: Current point in the optimization space.
         objective: Current objective function value.
         constraints: Current constraint values.
         state: Current augmented Lagrangian state.
-        settings: Settings for the augmented Lagrangian method.
-        penalty_parameters: Optional custom penalty parameters. If None, they will be
-        updated based on constraint violations.
-        bounds: Optional custom bounds. If None, they will be updated based on settings.
 
     Returns:
-        Updated augmented Lagrangian state.
+        Current value of the augmented Lagrangian function.
     """
     value = objective + jnp.sum(
         0.5
