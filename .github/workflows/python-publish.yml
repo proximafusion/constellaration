@@ -30,7 +30,7 @@ jobs:
         run: |
           # NOTE: put your own distribution build steps here.
           python -m pip install hatchling
-          hatch build
+          python -m hatchling build
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
