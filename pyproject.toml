@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
@@ -63,7 +63,10 @@ Issues = "https://github.com/proximafusion/constellaration/issues"
 Source = "https://github.com/proximafusion/constellaration"
 
 [tool.hatch.version]
-path = "src/constellaration/__about__.py"
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/constellaration/__about__.py"
 
 [project.optional-dependencies]
 test = ["pytest"]
