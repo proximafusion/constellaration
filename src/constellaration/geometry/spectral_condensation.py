@@ -166,10 +166,11 @@ def spectrally_condense_surface(
         return val, grad_x * preconditioner
 
     # Constraint: normal displacement -------------------------------------------
-    n_pol, n_tor = (
-        surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
-            surface.n_poloidal_modes, surface.max_toroidal_mode
-        )
+    (
+        n_pol,
+        n_tor,
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+        surface.n_poloidal_modes, surface.max_toroidal_mode
     )
     if surface.max_toroidal_mode == 0:
         n_tor = 1
@@ -189,30 +190,30 @@ def spectrally_condense_surface(
         ub=settings.maximum_normal_displacement,
     )
 
-    # Optimization loop ---------------------------------------------------------
-    preconditioned_x = x0.copy()
-    result: optimize.OptimizeResult | None = None
-    for restart in range(settings.n_restarts + 1):
-        logger.info("Spectral condensation, restart %d.", restart)
-        restart_x0 = preconditioned_x if restart > 0 else np.zeros_like(x0)
-        result = optimize.minimize(
+    # Optimization --------------------------------------------------------------
+    def _run_minimize(x0_arg: np.ndarray) -> optimize.OptimizeResult:
+        res = optimize.minimize(
             fun=preconditioned_value_and_grad,
-            x0=restart_x0,
+            x0=x0_arg,
             method="trust-constr",
             jac=True,
             constraints=[constraint],
             options={"maxiter": 1000},
             bounds=optimize.Bounds(
-                lb=-settings.bounds * np.ones_like(x0),
-                ub=settings.bounds * np.ones_like(x0),
+                lb=float(-settings.bounds),
+                ub=float(settings.bounds),
             ),
         )
-        logger.debug("Optimizer result: %s", result)
-        if result.status not in (0, 1):
-            logger.warning("Optimization did not converge: %s", result.message)
-        preconditioned_x = result.x.copy()
+        logger.debug("Optimizer result: %s", res)
+        if res.status not in (0, 1):
+            logger.warning("Optimization did not converge: %s", res.message)
+        return res
 
-    assert result is not None
+    logger.info("Spectral condensation, initial optimization.")
+    result = _run_minimize(np.zeros_like(x0))
+    for restart in range(settings.n_restarts):
+        logger.info("Spectral condensation, restart %d.", restart + 1)
+        result = _run_minimize(result.x.copy())
 
     violation = np.max(np.abs(preconditioned_constraint(result.x)))
     logger.debug("Constraint violation inf-norm: %s", violation)
