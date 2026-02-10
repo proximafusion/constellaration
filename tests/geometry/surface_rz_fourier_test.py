@@ -1090,3 +1090,97 @@ def test_compute_normal_displacement_raises_for_mismatched_parameters() -> None:
             n_poloidal_points=3,
             n_toroidal_points=2,
         )
+
+
+# ---------- to_standard_orientation tests ----------
+
+
+def test_to_standard_orientation_torus_external_ccw() -> None:
+    """Surface already in standard orientation is returned unchanged."""
+    major_radius = 1.5
+    minor_radius = 0.5
+    r_cos = np.array([[major_radius], [minor_radius]])
+    z_sin = np.array([[0.0], [minor_radius]])
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, is_stellarator_symmetric=True
+    )
+    assert surface_rz_fourier._is_theta_external(surface)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface)
+    surface_std = surface_rz_fourier.to_standard_orientation(surface)
+    np.testing.assert_allclose(surface_std.r_cos, surface.r_cos)
+    np.testing.assert_allclose(surface_std.z_sin, surface.z_sin)
+    assert surface_rz_fourier._is_theta_external(surface_std)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface_std)
+
+
+def test_to_standard_orientation_torus_internal_ccw() -> None:
+    """theta=0 on the inside, counterclockwise: needs a theta shift by pi."""
+    major_radius = 1.5
+    minor_radius = 0.5
+    r_cos = np.array([[major_radius], [-minor_radius]])
+    z_sin = np.array([[0.0], [-minor_radius]])
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, is_stellarator_symmetric=True
+    )
+    assert not surface_rz_fourier._is_theta_external(surface)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface)
+    surface_std = surface_rz_fourier.to_standard_orientation(surface)
+    assert surface_rz_fourier._is_theta_external(surface_std)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface_std)
+    # Verify geometric equivalence: original at theta evaluates to same xyz
+    # as standardized at theta+pi
+    rng = np.random.default_rng(42)
+    theta_phi = rng.random((7, 8, 2)) * 2 * np.pi
+    points = surface_rz_fourier.evaluate_points_xyz(surface, theta_phi)
+    theta_phi_std = theta_phi.copy()
+    theta_phi_std[:, :, 0] += np.pi
+    points_std = surface_rz_fourier.evaluate_points_xyz(surface_std, theta_phi_std)
+    np.testing.assert_allclose(points, points_std, atol=1e-12)
+
+
+def test_to_standard_orientation_torus_external_cw() -> None:
+    """theta=0 on the outside, clockwise: needs theta sign flip."""
+    major_radius = 1.5
+    minor_radius = 0.5
+    r_cos = np.array([[major_radius], [minor_radius]])
+    z_sin = np.array([[0.0], [-minor_radius]])
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, is_stellarator_symmetric=True
+    )
+    assert surface_rz_fourier._is_theta_external(surface)
+    assert not surface_rz_fourier._is_theta_counterclockwise(surface)
+    surface_std = surface_rz_fourier.to_standard_orientation(surface)
+    assert surface_rz_fourier._is_theta_external(surface_std)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface_std)
+    # Verify geometric equivalence: original at theta = standardized at -theta
+    rng = np.random.default_rng(42)
+    theta_phi = rng.random((7, 8, 2)) * 2 * np.pi
+    points = surface_rz_fourier.evaluate_points_xyz(surface, theta_phi)
+    theta_phi_std = theta_phi.copy()
+    theta_phi_std[:, :, 0] = -theta_phi_std[:, :, 0]
+    points_std = surface_rz_fourier.evaluate_points_xyz(surface_std, theta_phi_std)
+    np.testing.assert_allclose(points, points_std, atol=1e-12)
+
+
+def test_to_standard_orientation_torus_internal_cw() -> None:
+    """theta=0 on the inside, clockwise: needs both shift and sign flip."""
+    major_radius = 1.5
+    minor_radius = 0.5
+    r_cos = np.array([[major_radius], [-minor_radius]])
+    z_sin = np.array([[0.0], [minor_radius]])
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos, z_sin=z_sin, is_stellarator_symmetric=True
+    )
+    assert not surface_rz_fourier._is_theta_external(surface)
+    assert not surface_rz_fourier._is_theta_counterclockwise(surface)
+    surface_std = surface_rz_fourier.to_standard_orientation(surface)
+    assert surface_rz_fourier._is_theta_external(surface_std)
+    assert surface_rz_fourier._is_theta_counterclockwise(surface_std)
+    # Verify geometric equivalence: original at theta = standardized at -theta+pi
+    rng = np.random.default_rng(42)
+    theta_phi = rng.random((7, 8, 2)) * 2 * np.pi
+    points = surface_rz_fourier.evaluate_points_xyz(surface, theta_phi)
+    theta_phi_std = theta_phi.copy()
+    theta_phi_std[:, :, 0] = -theta_phi_std[:, :, 0] + np.pi
+    points_std = surface_rz_fourier.evaluate_points_xyz(surface_std, theta_phi_std)
+    np.testing.assert_allclose(points, points_std, atol=1e-12)
