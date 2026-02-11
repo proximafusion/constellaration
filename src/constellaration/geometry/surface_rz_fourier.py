@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Mapping
 from typing import Sequence
 
@@ -12,6 +13,8 @@ from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.geometry import surface_utils
 from constellaration.utils.types import NpOrJaxArray, ScalarFloat
+
+logger = logging.getLogger(__name__)
 
 FourierCoefficients = jt.Float[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 FourierModes = jt.Int[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
@@ -1513,3 +1516,102 @@ def from_points(
         surface.z_cos = split[3].reshape(shape)
 
     return surface, residual
+
+
+def _is_theta_external(surface: SurfaceRZFourier) -> bool:
+    """Determine if a toroidal surface has theta=0 on the outside.
+
+    "Outside" means the radial coordinate at theta=0 is greater than at theta=pi.
+    """
+    rz_theta0 = evaluate_points_rz(surface, np.array([[0.0, 0.0]]))
+    rz_thetapi = evaluate_points_rz(surface, np.array([[np.pi, 0.0]]))
+    return bool(rz_theta0[0, 0] >= rz_thetapi[0, 0])
+
+
+def _is_theta_counterclockwise(surface: SurfaceRZFourier) -> bool:
+    """Determine if theta increases in the counterclockwise direction in an r-z plane.
+
+    Evaluated at the outboard side: counterclockwise means dz/dtheta >= 0.
+    """
+    theta_outside = 0.0 if _is_theta_external(surface) else np.pi
+    dz_dtheta = _evaluate_dz_dtheta(surface, np.array([[theta_outside, 0.0]]))
+    return bool(dz_dtheta[0] >= 0)
+
+
+def _surface_shift_theta_by_pi(surface: SurfaceRZFourier) -> SurfaceRZFourier:
+    """Return a copy of the surface where theta=0 is shifted by pi.
+
+    Due to Fourier properties, shifting theta by pi multiplies each coefficient
+    by (-1)^m where m is the poloidal mode number.
+    """
+    sign = (-1) ** surface.poloidal_modes
+    r_cos = sign * surface.r_cos
+    z_sin = sign * surface.z_sin
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        assert surface.z_cos is not None
+        r_sin = sign * surface.r_sin
+        z_cos = sign * surface.z_cos
+    else:
+        r_sin = None
+        z_cos = None
+    return surface.model_copy(
+        update=dict(
+            r_cos=r_cos,
+            z_sin=z_sin,
+            r_sin=r_sin,
+            z_cos=z_cos,
+        )
+    )
+
+
+def _surface_change_theta_sign(surface: SurfaceRZFourier) -> SurfaceRZFourier:
+    """Return a copy of the surface where the direction of theta is reversed.
+
+    Flipping theta is equivalent to replacing n -> -n in the Fourier representation,
+    which reverses the toroidal mode array. For sine terms the sign is also flipped.
+    The m=0 modes are unaffected by the theta flip and must be restored.
+    """
+    r_cos = np.asarray(surface.r_cos)[:, ::-1]
+    z_sin = -np.asarray(surface.z_sin)[:, ::-1]
+    if surface.is_stellarator_symmetric:
+        # m=0 modes are not affected by theta sign flip; undo the reversal
+        r_cos = r_cos.copy()
+        z_sin = z_sin.copy()
+        r_cos[0] = r_cos[0, ::-1]
+        z_sin[0] = -z_sin[0, ::-1]
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        assert surface.z_cos is not None
+        r_sin = -np.asarray(surface.r_sin)[:, ::-1]
+        z_cos = np.asarray(surface.z_cos)[:, ::-1]
+    else:
+        r_sin = None
+        z_cos = None
+    return surface.model_copy(
+        update=dict(
+            r_cos=r_cos,
+            z_sin=z_sin,
+            r_sin=r_sin,
+            z_cos=z_cos,
+        )
+    )
+
+
+def to_standard_orientation(surface: SurfaceRZFourier) -> SurfaceRZFourier:
+    """Return a copy of the surface where theta=0 is on the outside and theta increases
+    in the counterclockwise direction (in an r-z cross-section).
+
+    This normalization only applies to stellarator-symmetric surfaces. Non-symmetric
+    surfaces are returned unchanged.
+    """
+    if not surface.is_stellarator_symmetric:
+        logger.warning(
+            "The surface is not stellarator symmetric, therefore it was not modified."
+        )
+        return surface
+    if not _is_theta_external(surface):
+        surface = _surface_shift_theta_by_pi(surface)
+    if not _is_theta_counterclockwise(surface):
+        surface = _surface_change_theta_sign(surface)
+    return surface
