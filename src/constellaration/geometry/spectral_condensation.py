@@ -47,7 +47,7 @@ class SpectralCondensationSettings:
 
 def spectrally_condense_surface(
     surface: surface_rz_fourier.SurfaceRZFourier,
-    settings: SpectralCondensationSettings | None = None,
+    settings: SpectralCondensationSettings = SpectralCondensationSettings(),
 ) -> surface_rz_fourier.SurfaceRZFourier:
     r"""Spectrally condense a SurfaceRZFourier surface.
 
@@ -64,7 +64,7 @@ def spectrally_condense_surface(
 
     Args:
         surface: The surface to condense.
-        settings: Optimization settings.  Uses defaults when ``None``.
+        settings: Optimization settings.
 
     Returns:
         A new SurfaceRZFourier with reduced spectral width.
@@ -72,9 +72,6 @@ def spectrally_condense_surface(
     Raises:
         NotImplementedError: If the surface is not stellarator symmetric.
     """
-    if settings is None:
-        settings = SpectralCondensationSettings()
-
     if not surface.is_stellarator_symmetric:
         raise NotImplementedError(
             "Non stellarator symmetric surfaces are not supported yet."
