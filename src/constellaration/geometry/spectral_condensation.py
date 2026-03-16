@@ -36,7 +36,7 @@ class SpectralCondensationSettings:
     original."""
 
     energy_scale: float = 3.5
-    """Energy-based spectrum scaling factor for preconditioning."""
+    """Energy-based spectrum scaling factor (unused, kept for API compatibility)."""
 
     bounds: float = 1.0
     """Symmetric bounds on the normalized optimization variables."""
@@ -77,26 +77,17 @@ def spectrally_condense_surface(
             "Non stellarator symmetric surfaces are not supported yet."
         )
 
-    # Determine free variables --------------------------------------------------
-    ntor = surface.max_toroidal_mode
-
-    free_r = np.ones(surface.r_cos.shape, dtype=bool)
-    free_r[0, :ntor] = False  # r_cos(m=0, n<0) fixed at 0
-    free_r[0, ntor] = False  # r_cos(0,0) - major radius
-
-    free_z = np.ones(surface.z_sin.shape, dtype=bool)
-    free_z[0, : ntor + 1] = False  # z_sin(m=0, n<=0) fixed at 0
-
-    n_free_r = int(free_r.sum())
-
-    # Energy spectrum scaling for preconditioning -------------------------------
-    # Uses the same exp-based formula as the reference implementation to ensure
-    # the energy_scale default (3.5) works well.
-    energy = surface.poloidal_modes**2 + surface.toroidal_modes**2
-    scale = np.exp(-np.sqrt(energy.astype(np.float64)) / settings.energy_scale)
+    # Free variables: exclude ALL m=0 modes.
+    # m=0 modes have zero weight in the spectral width objective (m^p = 0 for m=0)
+    # and create degenerate Hessian directions.
+    free_mask = np.asarray(surface.poloidal_modes > 0)
+    n_free_r = int(free_mask.sum())
 
     r_cos_0 = np.array(surface.r_cos, dtype=np.float64)
     z_sin_0 = np.array(surface.z_sin, dtype=np.float64)
+
+    # x0: initial free coefficients [r_cos_free, z_sin_free]
+    x0 = np.concatenate([r_cos_0[free_mask], z_sin_0[free_mask]])
 
     # Pre-compute mode weights for the analytical gradient
     m = surface.poloidal_modes.astype(np.float64)
@@ -109,8 +100,8 @@ def spectrally_condense_surface(
         """Optimization vector -> (r_cos, z_sin) arrays."""
         r_cos = r_cos_0.copy()
         z_sin = z_sin_0.copy()
-        r_cos[free_r] += x[:n_free_r] * scale[free_r]
-        z_sin[free_z] += x[n_free_r:] * scale[free_z]
+        r_cos[free_mask] = x[:n_free_r]
+        z_sin[free_mask] = x[n_free_r:]
         return r_cos, z_sin
 
     def _x_to_surface(
@@ -139,27 +130,41 @@ def spectrally_condense_surface(
 
         grad_r_full = common * r_cos
         grad_z_full = common * z_sin
-        # Chain rule: dx -> coefficients includes the scale factor
-        grad = np.concatenate(
-            [grad_r_full[free_r] * scale[free_r], grad_z_full[free_z] * scale[free_z]]
-        )
+        grad = np.concatenate([grad_r_full[free_mask], grad_z_full[free_mask]])
         return value, grad
 
-    # Hessian-based preconditioning ---------------------------------------------
-    x0 = np.zeros(n_free_r + int(free_z.sum()))
-    hessian = _approx_hessian(lambda x: _objective_and_grad(x)[0], x0)
-    eigvals, _ = np.linalg.eigh(hessian)
-    with np.errstate(divide="ignore"):
-        preconditioner = np.where(
-            np.abs(eigvals) > 1e-30, np.sqrt(1.0 / np.abs(eigvals)), 1.0
+    # Jacobi preconditioner from Hessian diagonal ----------------------------------
+    # Using the diagonal (not eigenvalues) is critical: eigenvalues are sorted and
+    # not aligned with coordinate axes, so applying them as per-variable scaling
+    # mixes up directions and can worsen conditioning.
+    hessian_diag = _approx_hessian_diagonal(lambda x: _objective_and_grad(x)[0], x0)
+    preconditioner = np.where(
+        np.abs(hessian_diag) >= 1e-6,
+        np.sqrt(1.0 / np.abs(hessian_diag)),
+        1e3,
+    )
+
+    abs_diag = np.abs(hessian_diag)
+    positive_diag = abs_diag[abs_diag > 1e-16]
+    if len(positive_diag) > 0:
+        kappa = positive_diag.max() / positive_diag.min()
+        logger.info(
+            "Hessian diagonal range: [%.3e, %.3e], kappa = %.3e",
+            positive_diag.min(),
+            positive_diag.max(),
+            kappa,
         )
     logger.debug("Preconditioner: %s", preconditioner)
 
     def preconditioned_value_and_grad(
-        y: jt.Float[np.ndarray, " n"],
+        u: jt.Float[np.ndarray, " n"],
     ) -> tuple[float, np.ndarray]:
-        """Preconditioned objective returning (value, gradient)."""
-        val, grad_x = _objective_and_grad(preconditioner * y)
+        """Preconditioned objective returning (value, gradient).
+
+        Uses the affine map x = P*u + x0, so u=0 corresponds to the original surface.
+        """
+        x = preconditioner * u + x0
+        val, grad_x = _objective_and_grad(x)
         return val, grad_x * preconditioner
 
     # Constraint: normal displacement -------------------------------------------
@@ -178,8 +183,8 @@ def spectrally_condense_surface(
         n_toroidal_points=n_tor,
     )
 
-    def preconditioned_constraint(y: jt.Float[np.ndarray, " n"]) -> np.ndarray:
-        return _normal_distance_fn(_x_to_surface(preconditioner * y))
+    def preconditioned_constraint(u: jt.Float[np.ndarray, " n"]) -> np.ndarray:
+        return _normal_distance_fn(_x_to_surface(preconditioner * u + x0))
 
     constraint = optimize.NonlinearConstraint(
         fun=preconditioned_constraint,
@@ -188,11 +193,13 @@ def spectrally_condense_surface(
     )
 
     # Optimization --------------------------------------------------------------
-    def _run_minimize(x0_arg: np.ndarray) -> optimize.OptimizeResult:
+    u0 = np.zeros_like(x0)
+
+    def _run_minimize(u0_arg: np.ndarray) -> optimize.OptimizeResult:
         res = optimize.minimize(
             fun=preconditioned_value_and_grad,
-            x0=x0_arg,
-            method="trust-constr",
+            x0=u0_arg,
+            method="slsqp",
             jac=True,
             constraints=[constraint],
             options={"maxiter": 1000},
@@ -202,12 +209,12 @@ def spectrally_condense_surface(
             ),
         )
         logger.debug("Optimizer result: %s", res)
-        if res.status not in (0, 1):
+        if not res.success:
             logger.warning("Optimization did not converge: %s", res.message)
         return res
 
     logger.info("Spectral condensation, initial optimization.")
-    result = _run_minimize(np.zeros_like(x0))
+    result = _run_minimize(u0)
     for restart in range(settings.n_restarts):
         logger.info("Spectral condensation, restart %d.", restart + 1)
         result = _run_minimize(result.x.copy())
@@ -215,7 +222,7 @@ def spectrally_condense_surface(
     violation = np.max(np.abs(preconditioned_constraint(result.x)))
     logger.debug("Constraint violation inf-norm: %s", violation)
 
-    return _x_to_surface(preconditioner * result.x)
+    return _x_to_surface(preconditioner * result.x + x0)
 
 
 def _create_normal_distance_constraint(
@@ -225,8 +232,12 @@ def _create_normal_distance_constraint(
 ) -> Callable[[surface_rz_fourier.SurfaceRZFourier], np.ndarray]:
     """Build a constraint function that measures normal distance to *target_surface*.
 
-    The reference surface data (xyz, unit normals) is pre-computed once so that
-    only the comparison surface needs to be evaluated at each optimization step.
+    Uses line-segment projection for smooth closest-point correspondence at fixed
+    phi, rather than discrete nearest-neighbor (which creates a non-smooth constraint
+    landscape with kinks at segment boundaries).
+
+    The reference surface data (xyz, unit normals, line segments) is pre-computed once
+    so that only the comparison surface needs to be evaluated at each optimization step.
     """
     phi_upper_bound = (
         2.0
@@ -247,6 +258,19 @@ def _create_normal_distance_constraint(
         surface_rz_fourier.evaluate_unit_normal(target_surface, theta_phi)
     )
 
+    # Close the theta loop by appending the first row (theta wraps at 2*pi).
+    ref_xyz_closed = np.concatenate([ref_xyz, ref_xyz[:1]], axis=0)
+    ref_normal_closed = np.concatenate([ref_normal, ref_normal[:1]], axis=0)
+
+    # Pre-compute line segments per phi slice.
+    seg_starts = ref_xyz_closed[:-1]  # (n_theta, n_phi, 3)
+    seg_ends = ref_xyz_closed[1:]  # (n_theta, n_phi, 3)
+    seg_d = seg_ends - seg_starts  # (n_theta, n_phi, 3)
+    seg_d_sq = np.sum(seg_d * seg_d, axis=-1)  # (n_theta, n_phi)
+
+    normal_starts = ref_normal_closed[:-1]  # (n_theta, n_phi, 3)
+    normal_ends = ref_normal_closed[1:]  # (n_theta, n_phi, 3)
+
     def constraint_fn(
         comparison_surface: surface_rz_fourier.SurfaceRZFourier,
     ) -> np.ndarray:
@@ -257,16 +281,52 @@ def _create_normal_distance_constraint(
         distances = np.empty(n_points)
         idx = 0
         for j in range(n_toroidal_points):
-            ref_at_phi = ref_xyz[:, j, :]
-            normals_at_phi = ref_normal[:, j, :]
-            new_at_phi = new_xyz[:, j, :]
-            diff = new_at_phi[:, np.newaxis, :] - ref_at_phi[np.newaxis, :, :]
-            dist_sq = np.sum(diff * diff, axis=-1)
-            closest = np.argmin(dist_sq, axis=1)
-            delta = new_at_phi - ref_at_phi[closest]
-            normal_closest = normals_at_phi[closest]
+            new_at_phi = new_xyz[:, j, :]  # (n_new, 3)
+
+            # Line-segment projection: for each new point, project onto all segments
+            # at this phi slice and find the closest.
+            s = seg_starts[:, j, :]  # (n_seg, 3)
+            d = seg_d[:, j, :]  # (n_seg, 3)
+            d_sq = seg_d_sq[:, j]  # (n_seg,)
+
+            # v[i, k, :] = new_at_phi[i] - s[k]
+            v = new_at_phi[:, np.newaxis, :] - s[np.newaxis, :, :]  # (n_new, n_seg, 3)
+
+            # Projection parameter t = (v . d) / (d . d), clamped to [0, 1]
+            t_num = np.sum(v * d[np.newaxis, :, :], axis=-1)  # (n_new, n_seg)
+            safe_d_sq = np.where(d_sq > 1e-30, d_sq, 1.0)
+            t = np.clip(t_num / safe_d_sq[np.newaxis, :], 0.0, 1.0)  # (n_new, n_seg)
+
+            # Closest point on each segment
+            closest = (
+                s[np.newaxis, :, :] + t[:, :, np.newaxis] * d[np.newaxis, :, :]
+            )  # (n_new, n_seg, 3)
+
+            # Squared distance to each segment's closest point
+            dist_sq = np.sum(
+                (new_at_phi[:, np.newaxis, :] - closest) ** 2, axis=-1
+            )  # (n_new, n_seg)
+
+            # Best segment per new point
+            best_seg = np.argmin(dist_sq, axis=1)  # (n_new,)
+            arange = np.arange(n_poloidal_points)
+            t_best = t[arange, best_seg]  # (n_new,)
+
+            best_closest = closest[arange, best_seg]  # (n_new, 3)
+
+            # Interpolate unit normal at the closest point
+            ns = normal_starts[:, j, :]  # (n_seg, 3)
+            ne = normal_ends[:, j, :]  # (n_seg, 3)
+            interp_normal = (1.0 - t_best)[:, np.newaxis] * ns[best_seg] + t_best[
+                :, np.newaxis
+            ] * ne[best_seg]
+            norms = np.linalg.norm(interp_normal, axis=-1, keepdims=True)
+            interp_normal = interp_normal / np.where(norms > 1e-30, norms, 1.0)
+
+            # Signed normal distance
+            delta = new_at_phi - best_closest
             distances[idx : idx + n_poloidal_points] = np.sum(
-                delta * normal_closest, axis=-1
+                delta * interp_normal, axis=-1
             )
             idx += n_poloidal_points
         return distances
@@ -274,27 +334,23 @@ def _create_normal_distance_constraint(
     return constraint_fn
 
 
-def _approx_hessian(
+def _approx_hessian_diagonal(
     fun: Callable[[np.ndarray], float],
     x0: np.ndarray,
     eps: float = 1e-5,
 ) -> np.ndarray:
-    """Approximate the Hessian of *fun* at *x0* via finite differences."""
+    """Approximate the diagonal of the Hessian of *fun* at *x0* via central finite
+    differences.
+
+    Uses 2*n+1 function evaluations (much cheaper than the full O(n^2) Hessian).
+    """
     n = len(x0)
-    hessian = np.zeros((n, n))
     f0 = fun(x0)
-    fi = np.empty(n)
+    diag = np.empty(n)
     for i in range(n):
         ei = np.zeros(n)
         ei[i] = eps
-        fi[i] = fun(x0 + ei)
-    for i in range(n):
-        ei = np.zeros(n)
-        ei[i] = eps
-        for j in range(i, n):
-            ej = np.zeros(n)
-            ej[j] = eps
-            fij = fun(x0 + ei + ej)
-            hessian[i, j] = (fij - fi[i] - fi[j] + f0) / (eps * eps)
-            hessian[j, i] = hessian[i, j]
-    return hessian
+        fp = fun(x0 + ei)
+        fm = fun(x0 - ei)
+        diag[i] = (fp - 2.0 * f0 + fm) / (eps * eps)
+    return diag

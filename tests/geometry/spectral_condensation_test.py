@@ -1,11 +1,17 @@
+import json
+import pathlib
+
 import numpy as np
 import pytest
 
-from constellaration.geometry import surface_rz_fourier
+from constellaration.geometry import surface_rz_fourier, surface_utils
 from constellaration.geometry.spectral_condensation import (
     SpectralCondensationSettings,
+    _create_normal_distance_constraint,
     spectrally_condense_surface,
 )
+
+TEST_DATA_DIR = pathlib.Path(__file__).resolve().parent / "test_data"
 
 # Reference shapes from Hirshman 1985:
 # "Optimized Fourier representations for three-dimensional magnetic surfaces."
@@ -103,3 +109,60 @@ def test_spectrally_condense_surface_lowers_spectral_width(
     )
     rtol = 1e-3
     assert init_width > final_width * (1 + rtol)
+
+
+def _load_boundary(filename: str) -> surface_rz_fourier.SurfaceRZFourier:
+    with (TEST_DATA_DIR / filename).open() as f:
+        data = json.load(f)
+    return surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array(data["r_cos"]),
+        z_sin=np.array(data["z_sin"]),
+        n_field_periods=data["n_field_periods"],
+        is_stellarator_symmetric=data["is_stellarator_symmetric"],
+    )
+
+
+@pytest.mark.parametrize("filename", ["test_boundary_1.json", "test_boundary_2.json"])
+def test_spectrally_condense_3d_stellarator_boundary(filename: str) -> None:
+    """Spectral condensation on realistic 3D stellarator boundaries.
+
+    Checks that the spectral width is reduced by at least 10% and that the
+    normal displacement constraint is satisfied.
+    """
+    surface = _load_boundary(filename)
+    max_disp = 1e-3
+    settings = SpectralCondensationSettings(
+        p=4,
+        q=1,
+        normalize=False,
+        maximum_normal_displacement=max_disp,
+        n_restarts=0,
+    )
+
+    condensed = spectrally_condense_surface(surface, settings)
+
+    init_width = float(
+        surface_rz_fourier.spectral_width(
+            [surface.r_cos, surface.z_sin], p=4, q=1, normalize=False
+        )
+    )
+    final_width = float(
+        surface_rz_fourier.spectral_width(
+            [condensed.r_cos, condensed.z_sin], p=4, q=1, normalize=False
+        )
+    )
+    assert (
+        final_width < init_width * 0.9
+    ), f"Expected >= 10% reduction, got {(1 - final_width / init_width) * 100:.1f}%"
+
+    (
+        n_pol,
+        n_tor,
+    ) = surface_utils.n_poloidal_toroidal_points_to_satisfy_nyquist_criterion(
+        surface.n_poloidal_modes, surface.max_toroidal_mode
+    )
+    constraint_fn = _create_normal_distance_constraint(surface, n_pol, n_tor)
+    violation = np.max(np.abs(constraint_fn(condensed)))
+    assert (
+        violation <= max_disp * 1.01
+    ), f"Constraint violated: {violation:.3e} > {max_disp:.3e}"
