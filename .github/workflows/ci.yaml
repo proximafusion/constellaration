@@ -42,7 +42,11 @@ jobs:
           cache: 'pip'
       - name: Install required packages for Ubuntu
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libnetcdf-dev
+        run: |
+          # Overwrite broken mirror file with a working Ubuntu archive URL
+          echo "http://azure.archive.ubuntu.com/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
+          sudo apt-get update
+          sudo apt-get install -y libnetcdf-dev
       - name: Install required packages for macOS
         if: runner.os == 'macOS'
         run: brew install netcdf
