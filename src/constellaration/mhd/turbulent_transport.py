@@ -46,9 +46,11 @@ def compute_flux_compression_in_regions_of_bad_curvature(
 
     minor_radius = equilibrium.Aminor_p
 
+    # Field-aligned (PEST) Jacobian.
+    jacobian = data.edge_toroidal_flux_over_2pi / data.B_sup_theta_pest
+
     flux_surface_average_weights = (
-        np.abs(data.sqrt_g_vmec)
-        / np.abs(data.sqrt_g_vmec).mean(axis=(1, 2))[:, np.newaxis, np.newaxis]
+        np.abs(jacobian) / np.abs(jacobian).mean(axis=(1, 2))[:, np.newaxis, np.newaxis]
     )
 
     grad_r_dot_grad_r = (
