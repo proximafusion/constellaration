@@ -419,7 +419,7 @@ def magnetic_field_magnitude(
     """Computes the magnetic field magnitude on a set of of (s, theta, phi) points."""
     magnetic_field_interpolator = _build_radial_interpolator(
         equilibrium=equilibrium,
-        fourier_coefficients=equilibrium.bmnc.T[1:, :],
+        fourier_coefficients=equilibrium.bmnc,
         is_on_full_mesh=False,
     )
     magnetic_field_fourier_coefficients = _interpolate_radially(
@@ -437,16 +437,19 @@ def magnetic_field_magnitude(
 
 def _build_radial_interpolator(
     equilibrium: VmecppWOut,
-    fourier_coefficients: jt.Float[np.ndarray, "n_surfaces n_fourier_coefficients"],
+    fourier_coefficients: jt.Float[np.ndarray, "n_modes n_surfaces"],
     is_on_full_mesh: bool,
 ) -> interpolate.interp1d:
     if is_on_full_mesh:
         x = equilibrium.normalized_toroidal_flux_full_grid_mesh
+        y = fourier_coefficients.T
     else:
         x = equilibrium.normalized_toroidal_flux_half_grid_mesh[1:]
+        # Half-grid arrays have a zero-padded first column; skip it.
+        y = fourier_coefficients[:, 1:].T
     return interpolate.interp1d(
         x=x,
-        y=fourier_coefficients,
+        y=y,
         axis=0,
         fill_value="extrapolate",  # pyright: ignore
     )

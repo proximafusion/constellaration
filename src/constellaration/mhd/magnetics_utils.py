@@ -87,10 +87,10 @@ def normalized_magnetic_gradient_scale_length(
     xn_nyq = equilibrium.xn_nyq
     rmnc = equilibrium.rmnc.T
     zmns = equilibrium.zmns.T
-    gmnc = equilibrium.gmnc.T[1:, :]
-    bmnc = equilibrium.bmnc.T[1:, :]
-    bsupumnc = equilibrium.bsupumnc.T[1:, :]
-    bsupvmnc = equilibrium.bsupvmnc.T[1:, :]
+    gmnc = equilibrium.gmnc[:, 1:].T
+    bmnc = equilibrium.bmnc[:, 1:].T
+    bsupumnc = equilibrium.bsupumnc[:, 1:].T
+    bsupvmnc = equilibrium.bsupvmnc[:, 1:].T
 
     s_full = np.linspace(0, 1, ns)
     ds = s_full[2] - s_full[1]
