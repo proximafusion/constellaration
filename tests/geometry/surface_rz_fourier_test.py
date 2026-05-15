@@ -1349,3 +1349,109 @@ def test_rms_normal_displacement_distance_differs_from_mean_abs_version() -> Non
         a, b, n_poloidal_points=32, n_toroidal_points=8
     )
     assert rms > mean_abs > 0
+
+
+# ---------- compare_augmentations behavior ----------
+
+
+def test_rms_distance_is_invariant_under_stellarator_augmentation() -> None:
+    """A surface and any of its 8 stellarator-symmetric augmentations describe
+    the same physical configuration, so the distance must be ~0 by default."""
+    base = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    import itertools
+
+    for switches in itertools.product([False, True], repeat=3):
+        augmented = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+            base, augmentation_switches=list(switches)
+        )
+        d = surface_rz_fourier.compute_rms_normal_displacement_distance(
+            base, augmented, n_poloidal_points=16, n_toroidal_points=16
+        )
+        assert d == pytest.approx(
+            0.0, abs=1e-6
+        ), f"distance under switches={switches} was {d}, expected ~0"
+
+
+def test_rms_distance_with_compare_augmentations_off_sees_relabeling() -> None:
+    """With the augmentation search disabled, a toroidal-shift augmentation
+    produces a positive distance even though the 3D shape is unchanged."""
+    base = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    shifted = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        base, augmentation_switches=[False, True, False]
+    )
+    d = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        base,
+        shifted,
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+        compare_augmentations=False,
+    )
+    assert d > 0.1
+
+
+def test_rms_distance_with_compare_augmentations_matches_explicit_min() -> None:
+    """The default-on output should equal the minimum across the 8 augmentations
+    of surface_2 computed via the plain (off) variant."""
+    import itertools
+
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    b = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.15, 1.05, 0.18]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.12, 1.05, 0.18]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    explicit_min = min(
+        surface_rz_fourier.compute_rms_normal_displacement_distance(
+            a,
+            surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+                b, augmentation_switches=list(switches)
+            ),
+            n_poloidal_points=16,
+            n_toroidal_points=16,
+            compare_augmentations=False,
+        )
+        for switches in itertools.product([False, True], repeat=3)
+    )
+    auto_min = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=True
+    )
+    assert auto_min == pytest.approx(explicit_min, rel=1e-12)
+
+
+def test_rms_distance_falls_back_to_pairwise_when_not_stellarator_symmetric() -> None:
+    """For non-stellarator-symmetric surfaces the augmentation scheme does not
+    apply; the function should silently fall back to the plain pairwise
+    distance instead of raising."""
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        r_sin=np.array([[0.0, 0.0, 0.0], [0.0, 0.05, 0.0]]),
+        z_cos=np.array([[0.0, 0.0, 0.0], [0.0, 0.05, 0.0]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=False,
+    )
+    b = a.model_copy()
+    # With the flag on but inputs non-symmetric, expect the same answer as off.
+    d_on = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=True
+    )
+    d_off = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=False
+    )
+    assert d_on == pytest.approx(d_off, rel=1e-12)

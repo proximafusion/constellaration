@@ -708,6 +708,7 @@ def compute_rms_normal_displacement_distance(
     surface_2: SurfaceRZFourier,
     n_poloidal_points: int = 32,
     n_toroidal_points: int = 32,
+    compare_augmentations: bool = True,
 ) -> float:
     """Symmetrized RMS normal displacement distance between two surfaces.
 
@@ -716,22 +717,69 @@ def compute_rms_normal_displacement_distance(
     is taken; the returned distance is the arithmetic mean of the two RMS
     values, so that ``d(A, B) == d(B, A)``.
 
-    This is the geometric diversity metric used by the multi-objective
-    MHD-stable QI benchmark to score how shape-different two near-Pareto
-    boundaries are after normalizing them to a common aspect ratio. The
-    metric is non-negative, symmetric, and zero only when the two surfaces
-    coincide on the sampling grid.
+    By default the distance is taken as the **minimum over all 8 x 8 = 64
+    pairs** of stellarator-symmetric augmentations of the two surfaces (see
+    :func:`generate_stellarator_symmetric_augmentation`). The 8 augmentations
+    of a stellarator-symmetric surface are sign flips of (1) ``z_sin``
+    coefficients, (2) odd toroidal modes, (3) odd poloidal modes; for a
+    well-resolved stellarator-symmetric configuration these all correspond
+    to the same physical shape under coordinate relabeling. Comparing all
+    augmentations prevents the diversity score from being inflated by
+    trivial symmetry relabelings that leave the physics unchanged. Set
+    ``compare_augmentations=False`` to recover the plain pairwise distance
+    (e.g. when ``surface_1`` or ``surface_2`` is not stellarator-symmetric,
+    or when the caller has already canonicalized the augmentation).
 
     Args:
         surface_1: First surface.
         surface_2: Second surface.
         n_poloidal_points: Number of poloidal grid points used for evaluation.
         n_toroidal_points: Number of toroidal grid points used for evaluation.
+        compare_augmentations: If True (default), return the minimum RMS
+            distance across all 64 (aug(surface_1), aug(surface_2)) pairs.
+            Falls back automatically to the plain pairwise distance when
+            either surface is not stellarator-symmetric.
 
     Returns:
         The symmetrized RMS normal displacement distance between the two
         surfaces.
     """
+    can_augment = (
+        compare_augmentations
+        and surface_1.is_stellarator_symmetric
+        and surface_2.is_stellarator_symmetric
+    )
+    if not can_augment:
+        return _pairwise_rms_normal_displacement(
+            surface_1,
+            surface_2,
+            n_poloidal_points=n_poloidal_points,
+            n_toroidal_points=n_toroidal_points,
+        )
+
+    best = float("inf")
+    for switches in _STELLARATOR_SYMMETRY_AUGMENTATION_SWITCHES:
+        aug_2 = generate_stellarator_symmetric_augmentation(
+            surface_2, augmentation_switches=list(switches)
+        )
+        candidate = _pairwise_rms_normal_displacement(
+            surface_1,
+            aug_2,
+            n_poloidal_points=n_poloidal_points,
+            n_toroidal_points=n_toroidal_points,
+        )
+        if candidate < best:
+            best = candidate
+    return best
+
+
+def _pairwise_rms_normal_displacement(
+    surface_1: SurfaceRZFourier,
+    surface_2: SurfaceRZFourier,
+    n_poloidal_points: int,
+    n_toroidal_points: int,
+) -> float:
+    """Plain symmetrized RMS normal displacement (no augmentation search)."""
     forward_distances = compute_normal_displacement(
         target_surface=surface_1,
         comparison_surface=surface_2,
@@ -747,6 +795,24 @@ def compute_rms_normal_displacement_distance(
     rms_forward = jnp.sqrt(jnp.mean(forward_distances**2))
     rms_backward = jnp.sqrt(jnp.mean(backward_distances**2))
     return float(0.5 * (rms_forward + rms_backward))
+
+
+_STELLARATOR_SYMMETRY_AUGMENTATION_SWITCHES: tuple[tuple[bool, bool, bool], ...] = (
+    (False, False, False),
+    (False, False, True),
+    (False, True, False),
+    (False, True, True),
+    (True, False, False),
+    (True, False, True),
+    (True, True, False),
+    (True, True, True),
+)
+"""All 8 sign-flip combinations passed to
+:func:`generate_stellarator_symmetric_augmentation` to enumerate the
+stellarator-symmetric augmentations of a surface. Iterating over only
+``surface_2``'s augmentations is sufficient because the augmentation group
+acts on both sides equivalently, so the minimum over 64 pairs equals the
+minimum over the 8 augmentations of one side."""
 
 
 def set_max_mode_numbers(

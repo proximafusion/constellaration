@@ -193,6 +193,7 @@ def binned_diversity_score(
     max_per_bin: int = DEFAULT_MAX_PER_BIN,
     n_poloidal_points: int = DEFAULT_N_POLOIDAL_POINTS,
     n_toroidal_points: int = DEFAULT_N_TOROIDAL_POINTS,
+    compare_augmentations: bool = True,
 ) -> float:
     """Binned geometric diversity score across the aspect-ratio range.
 
@@ -219,6 +220,12 @@ def binned_diversity_score(
             compute pairwise distances.
         n_poloidal_points: Poloidal grid resolution for the distance metric.
         n_toroidal_points: Toroidal grid resolution for the distance metric.
+        compare_augmentations: Forwarded to
+            :func:`surface_rz_fourier.compute_rms_normal_displacement_distance`.
+            When True (default) the distance between two boundaries is the
+            minimum across all 8 stellarator-symmetric augmentations of one
+            side, preventing trivial symmetry relabelings from inflating
+            diversity.
 
     Returns:
         Mean diversity score across the ``n_bins`` bins.
@@ -267,6 +274,7 @@ def binned_diversity_score(
             normalized,
             n_poloidal_points=n_poloidal_points,
             n_toroidal_points=n_toroidal_points,
+            compare_augmentations=compare_augmentations,
         )
 
     return float(np.mean(bin_scores))
@@ -276,6 +284,7 @@ def _mean_pairwise_rms_distance(
     boundaries: list[surface_rz_fourier.SurfaceRZFourier],
     n_poloidal_points: int,
     n_toroidal_points: int,
+    compare_augmentations: bool,
 ) -> float:
     """Mean over all unordered pairs of the symmetrized RMS normal distance."""
     distances: list[float] = []
@@ -286,6 +295,7 @@ def _mean_pairwise_rms_distance(
                 b,
                 n_poloidal_points=n_poloidal_points,
                 n_toroidal_points=n_toroidal_points,
+                compare_augmentations=compare_augmentations,
             )
         )
     return float(np.mean(distances))
@@ -351,6 +361,7 @@ def score_boundaries_diversity(
     max_per_bin: int = DEFAULT_MAX_PER_BIN,
     n_poloidal_points: int = DEFAULT_N_POLOIDAL_POINTS,
     n_toroidal_points: int = DEFAULT_N_TOROIDAL_POINTS,
+    compare_augmentations: bool = True,
 ) -> float:
     """Binned geometric diversity score for boundaries near the Pareto front.
 
@@ -376,6 +387,11 @@ def score_boundaries_diversity(
             inclusion. SoW default 0.9.
         ar_min, ar_max, n_bins, max_per_bin, n_poloidal_points,
             n_toroidal_points: Forwarded to :func:`binned_diversity_score`.
+        compare_augmentations: Forwarded to
+            :func:`binned_diversity_score` and ultimately to
+            :func:`surface_rz_fourier.compute_rms_normal_displacement_distance`.
+            When True (default) trivial stellarator-symmetric relabelings
+            of a boundary cannot inflate the diversity score.
 
     Returns:
         Diversity score (a non-negative float).
@@ -425,4 +441,5 @@ def score_boundaries_diversity(
         max_per_bin=max_per_bin,
         n_poloidal_points=n_poloidal_points,
         n_toroidal_points=n_toroidal_points,
+        compare_augmentations=compare_augmentations,
     )

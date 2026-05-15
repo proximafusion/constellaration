@@ -508,3 +508,73 @@ def test_score_boundaries_diversity_drops_dominated_levels_via_hiv_filter() -> N
         n_toroidal_points=8,
     )
     assert score == pytest.approx(score_no_dom, rel=1e-9)
+
+
+# ---------- compare_augmentations through scoring API ----------
+
+
+def test_binned_diversity_default_zero_when_partner_is_just_an_augmentation() -> None:
+    """Two boundaries in the same bin where one is a stellarator-symmetric
+    augmentation of the other should score ~0 by default (same physics)."""
+    base = _rotating_ellipse_at_ar(6.3, triangularity=0.1)
+    twin = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        base, augmentation_switches=[False, True, False]
+    )
+    score_default = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=[base, twin],
+        aspect_ratios=np.array([6.3, 6.3]),
+        lgradB_values=np.array([1.0, 1.0]),
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+    )
+    assert score_default == pytest.approx(0.0, abs=1e-6)
+
+
+def test_binned_diversity_can_be_fooled_when_compare_augmentations_off() -> None:
+    """The opt-out flag exposes the underlying weakness so we can confirm the
+    default really does protect against it."""
+    base = _rotating_ellipse_at_ar(6.3, triangularity=0.1)
+    twin = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        base, augmentation_switches=[False, True, False]
+    )
+    score_off = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=[base, twin],
+        aspect_ratios=np.array([6.3, 6.3]),
+        lgradB_values=np.array([1.0, 1.0]),
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+        compare_augmentations=False,
+    )
+    # Pre-fix behavior: a fake "different" boundary inflates the bin score.
+    # 1 non-empty bin out of 10 -> overall score ~ d / 10, which is still > 0.
+    assert score_off > 0.01
+
+
+def test_score_boundaries_diversity_flag_propagates() -> None:
+    """Passing compare_augmentations=False through the top-level scorer must
+    reach the underlying distance metric."""
+    base = _rotating_ellipse_at_ar(6.3, triangularity=0.1)
+    twin = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        base, augmentation_switches=[False, True, False]
+    )
+    metrics = [
+        _make_metrics(6.3, 3.0),
+        _make_metrics(6.3, 2.9),
+    ]
+    on = mhd_stable_qi_scoring.score_boundaries_diversity(
+        [base, twin],
+        "tight",
+        metrics=metrics,
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+    )
+    off = mhd_stable_qi_scoring.score_boundaries_diversity(
+        [base, twin],
+        "tight",
+        metrics=metrics,
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+        compare_augmentations=False,
+    )
+    assert on == pytest.approx(0.0, abs=1e-6)
+    assert off > 0.01
