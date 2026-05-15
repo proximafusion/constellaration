@@ -703,6 +703,52 @@ def compute_normal_displacement_distance(
     return float(0.5 * (average_forward_distance + average_backward_distance))
 
 
+def compute_rms_normal_displacement_distance(
+    surface_1: SurfaceRZFourier,
+    surface_2: SurfaceRZFourier,
+    n_poloidal_points: int = 32,
+    n_toroidal_points: int = 32,
+) -> float:
+    """Symmetrized RMS normal displacement distance between two surfaces.
+
+    For each surface, the signed normal distance to the other surface is
+    evaluated on a ``n_poloidal_points x n_toroidal_points`` grid and the RMS
+    is taken; the returned distance is the arithmetic mean of the two RMS
+    values, so that ``d(A, B) == d(B, A)``.
+
+    This is the geometric diversity metric used by the multi-objective
+    MHD-stable QI benchmark to score how shape-different two near-Pareto
+    boundaries are after normalizing them to a common aspect ratio. The
+    metric is non-negative, symmetric, and zero only when the two surfaces
+    coincide on the sampling grid.
+
+    Args:
+        surface_1: First surface.
+        surface_2: Second surface.
+        n_poloidal_points: Number of poloidal grid points used for evaluation.
+        n_toroidal_points: Number of toroidal grid points used for evaluation.
+
+    Returns:
+        The symmetrized RMS normal displacement distance between the two
+        surfaces.
+    """
+    forward_distances = compute_normal_displacement(
+        target_surface=surface_1,
+        comparison_surface=surface_2,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    backward_distances = compute_normal_displacement(
+        target_surface=surface_2,
+        comparison_surface=surface_1,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    rms_forward = jnp.sqrt(jnp.mean(forward_distances**2))
+    rms_backward = jnp.sqrt(jnp.mean(backward_distances**2))
+    return float(0.5 * (rms_forward + rms_backward))
+
+
 def set_max_mode_numbers(
     surface: SurfaceRZFourier,
     max_poloidal_mode: int,
