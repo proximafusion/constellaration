@@ -10,9 +10,20 @@ they are also reusable for other multi-objective post-analyses.
 
 from __future__ import annotations
 
+import itertools
+
 import jaxtyping as jt
 import numpy as np
 from pymoo.indicators import hv
+
+from constellaration.geometry import surface_rz_fourier
+
+DEFAULT_AR_MIN = 6.0
+DEFAULT_AR_MAX = 12.0
+DEFAULT_N_BINS = 10
+DEFAULT_MAX_PER_BIN = 15
+DEFAULT_N_POLOIDAL_POINTS = 32
+DEFAULT_N_TOROIDAL_POINTS = 32
 
 
 def pareto_levels(
@@ -132,3 +143,112 @@ def select_top_pareto_levels_by_hiv_fraction(
     else:
         selected = np.concatenate(levels[:k_threshold])
     return np.sort(selected)
+
+
+def binned_diversity_score(
+    boundaries: list[surface_rz_fourier.SurfaceRZFourier],
+    aspect_ratios: jt.Float[np.ndarray, " n_points"],
+    lgradB_values: jt.Float[np.ndarray, " n_points"],
+    *,
+    ar_min: float = DEFAULT_AR_MIN,
+    ar_max: float = DEFAULT_AR_MAX,
+    n_bins: int = DEFAULT_N_BINS,
+    max_per_bin: int = DEFAULT_MAX_PER_BIN,
+    n_poloidal_points: int = DEFAULT_N_POLOIDAL_POINTS,
+    n_toroidal_points: int = DEFAULT_N_TOROIDAL_POINTS,
+) -> float:
+    """Binned geometric diversity score across the aspect-ratio range.
+
+    Bins ``aspect_ratios`` into ``n_bins`` equal-width bins spanning
+    ``[ar_min, ar_max]``. For each bin with at least two configurations, the
+    top ``max_per_bin`` boundaries by ``lgradB_values`` are normalized to the
+    bin center via :func:`surface_rz_fourier.scale_to_aspect_ratio`, and the
+    mean pairwise symmetrized RMS normal displacement distance is computed.
+    Bins with fewer than two configurations score zero. The overall score is
+    the arithmetic mean across **all** ``n_bins`` bins -- empty bins penalize
+    the score, rewarding coverage of the AR range.
+
+    Args:
+        boundaries: Plasma boundaries (one per submitted configuration).
+        aspect_ratios: Aspect ratio of each boundary (typically from the
+            forward-model metrics).
+        lgradB_values: ``min_normalized_magnetic_gradient_scale_length``
+            (already multiplied by ``n_field_periods``) for each boundary.
+            Used to pick the top ``max_per_bin`` per bin.
+        ar_min: Lower edge of the binning range.
+        ar_max: Upper edge of the binning range.
+        n_bins: Number of equal-width bins.
+        max_per_bin: Per-bin cap on the number of boundaries used to
+            compute pairwise distances.
+        n_poloidal_points: Poloidal grid resolution for the distance metric.
+        n_toroidal_points: Toroidal grid resolution for the distance metric.
+
+    Returns:
+        Mean diversity score across the ``n_bins`` bins.
+    """
+    n = len(boundaries)
+    if len(aspect_ratios) != n or len(lgradB_values) != n:
+        raise ValueError(
+            "boundaries, aspect_ratios and lgradB_values must have the same length"
+        )
+    if n_bins <= 0:
+        raise ValueError(f"n_bins must be positive, got {n_bins}")
+    if ar_max <= ar_min:
+        raise ValueError(f"ar_max must exceed ar_min, got [{ar_min}, {ar_max}]")
+    if max_per_bin < 2:
+        raise ValueError(f"max_per_bin must be >= 2, got {max_per_bin}")
+
+    bin_width = (ar_max - ar_min) / n_bins
+    bin_centers = ar_min + (np.arange(n_bins) + 0.5) * bin_width
+
+    aspect_ratios = np.asarray(aspect_ratios)
+    lgradB_values = np.asarray(lgradB_values)
+
+    bin_scores = np.zeros(n_bins)
+    for bin_idx in range(n_bins):
+        bin_low = ar_min + bin_idx * bin_width
+        bin_high = bin_low + bin_width
+        if bin_idx == n_bins - 1:
+            mask = (aspect_ratios >= bin_low) & (aspect_ratios <= bin_high)
+        else:
+            mask = (aspect_ratios >= bin_low) & (aspect_ratios < bin_high)
+        member_indices = np.flatnonzero(mask)
+        if member_indices.size < 2:
+            continue
+
+        # Keep the top `max_per_bin` by lgradB (higher is better).
+        sorted_idx = member_indices[np.argsort(-lgradB_values[member_indices])]
+        kept = sorted_idx[:max_per_bin]
+
+        normalized = [
+            surface_rz_fourier.scale_to_aspect_ratio(
+                boundaries[int(i)], target_aspect_ratio=float(bin_centers[bin_idx])
+            )
+            for i in kept
+        ]
+        bin_scores[bin_idx] = _mean_pairwise_rms_distance(
+            normalized,
+            n_poloidal_points=n_poloidal_points,
+            n_toroidal_points=n_toroidal_points,
+        )
+
+    return float(np.mean(bin_scores))
+
+
+def _mean_pairwise_rms_distance(
+    boundaries: list[surface_rz_fourier.SurfaceRZFourier],
+    n_poloidal_points: int,
+    n_toroidal_points: int,
+) -> float:
+    """Mean over all unordered pairs of the symmetrized RMS normal distance."""
+    distances: list[float] = []
+    for a, b in itertools.combinations(boundaries, 2):
+        distances.append(
+            surface_rz_fourier.compute_rms_normal_displacement_distance(
+                a,
+                b,
+                n_poloidal_points=n_poloidal_points,
+                n_toroidal_points=n_toroidal_points,
+            )
+        )
+    return float(np.mean(distances))

@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from constellaration import mhd_stable_qi_scoring
+from constellaration.geometry import surface_rz_fourier
 
 
 def test_pareto_levels_empty_input() -> None:
@@ -149,3 +150,151 @@ def test_select_top_pareto_levels_handles_points_outside_reference() -> None:
     )
     # First arg's L0 is [0] (it dominates [1]); fall-back returns L0.
     np.testing.assert_array_equal(selected, [0])
+
+
+# ---------- binned_diversity_score tests ----------
+
+
+def _rotating_ellipse_at_ar(
+    target_ar: float, triangularity: float = 0.0
+) -> surface_rz_fourier.SurfaceRZFourier:
+    """Build a stellarator-symmetric NFP=3 surface then scale to target AR."""
+    r_cos = np.array(
+        [
+            [0.0, 10.0, 0.0],
+            [0.1, 1.0, triangularity],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.1, 1.0, triangularity],
+        ]
+    )
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    return surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=target_ar
+    )
+
+
+def test_binned_diversity_empty_input_is_zero() -> None:
+    score = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=[],
+        aspect_ratios=np.array([]),
+        lgradB_values=np.array([]),
+    )
+    assert score == 0.0
+
+
+def test_binned_diversity_score_validates_length_mismatch() -> None:
+    b = _rotating_ellipse_at_ar(7.0)
+    with pytest.raises(ValueError, match="same length"):
+        mhd_stable_qi_scoring.binned_diversity_score(
+            boundaries=[b, b],
+            aspect_ratios=np.array([7.0]),
+            lgradB_values=np.array([1.0, 2.0]),
+        )
+
+
+def test_binned_diversity_score_zero_when_single_point_per_bin() -> None:
+    # One configuration per bin -> every bin scores 0 -> overall score 0.
+    boundaries = [_rotating_ellipse_at_ar(ar) for ar in [6.3, 6.9, 7.5]]
+    score = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=boundaries,
+        aspect_ratios=np.array([6.3, 6.9, 7.5]),
+        lgradB_values=np.array([1.0, 1.0, 1.0]),
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    assert score == 0.0
+
+
+def test_binned_diversity_score_drops_boundaries_outside_range() -> None:
+    # Two boundaries inside one bin, two outside the global range.
+    boundaries = [
+        _rotating_ellipse_at_ar(6.4, triangularity=0.0),
+        _rotating_ellipse_at_ar(6.4, triangularity=0.1),
+        _rotating_ellipse_at_ar(4.0),  # outside ar_min
+        _rotating_ellipse_at_ar(15.0),  # outside ar_max
+    ]
+    score = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=boundaries,
+        aspect_ratios=np.array([6.4, 6.4, 4.0, 15.0]),
+        lgradB_values=np.array([1.0, 1.0, 1.0, 1.0]),
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    # One non-empty bin out of ten -> score is positive but small.
+    assert 0.0 < score < 1.0
+    # Score / n_bins must equal the within-bin distance / n_bins.
+    # i.e. bin 0 distance = 10 * score.
+    bin_distance = score * 10
+    assert bin_distance > 0
+
+
+def test_binned_diversity_score_returns_average_over_all_bins() -> None:
+    # Populate two bins each with two slightly-different boundaries; the
+    # other 8 bins are empty. Final score = (d_bin1 + d_bin2) / 10.
+    boundaries = [
+        _rotating_ellipse_at_ar(6.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(6.3, triangularity=0.1),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.15),
+    ]
+    score = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=boundaries,
+        aspect_ratios=np.array([6.3, 6.3, 9.3, 9.3]),
+        lgradB_values=np.array([1.0, 1.0, 1.0, 1.0]),
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    # Manually compute each bin's mean pairwise distance.
+    d_bin1 = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        boundaries[0], boundaries[1], n_poloidal_points=8, n_toroidal_points=8
+    )
+    d_bin2 = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        boundaries[2], boundaries[3], n_poloidal_points=8, n_toroidal_points=8
+    )
+    expected = (d_bin1 + d_bin2) / 10.0
+    assert score == pytest.approx(expected, rel=1e-3)
+
+
+def test_binned_diversity_score_caps_per_bin_using_lgradB() -> None:
+    # Three boundaries in the same bin, max_per_bin=2 -> only the two with
+    # the highest lgradB are kept (the unique boundary is dropped).
+    triangs = [0.0, 0.1, 0.2]
+    boundaries = [_rotating_ellipse_at_ar(7.5, triangularity=t) for t in triangs]
+    score_all = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=boundaries,
+        aspect_ratios=np.array([7.5, 7.5, 7.5]),
+        lgradB_values=np.array([1.0, 2.0, 3.0]),
+        n_bins=1,
+        ar_min=7.2,
+        ar_max=7.8,
+        max_per_bin=15,
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    score_capped = mhd_stable_qi_scoring.binned_diversity_score(
+        boundaries=boundaries,
+        aspect_ratios=np.array([7.5, 7.5, 7.5]),
+        lgradB_values=np.array([1.0, 2.0, 3.0]),
+        n_bins=1,
+        ar_min=7.2,
+        ar_max=7.8,
+        max_per_bin=2,
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    expected_capped = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        boundaries[1], boundaries[2], n_poloidal_points=8, n_toroidal_points=8
+    )
+    assert score_capped == pytest.approx(expected_capped, rel=1e-3)
+    # The all-three average should differ from the top-2-only average since
+    # the dropped pair has a different distance.
+    assert score_all != pytest.approx(score_capped, rel=1e-3)
