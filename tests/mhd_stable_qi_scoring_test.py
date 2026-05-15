@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from constellaration import mhd_stable_qi_scoring
+from constellaration import forward_model, mhd_stable_qi_scoring, problems
 from constellaration.geometry import surface_rz_fourier
 
 
@@ -298,3 +298,213 @@ def test_binned_diversity_score_caps_per_bin_using_lgradB() -> None:
     # The all-three average should differ from the top-2-only average since
     # the dropped pair has a different distance.
     assert score_all != pytest.approx(score_capped, rel=1e-3)
+
+
+# ---------- top-level scoring API ----------
+
+
+def _make_metrics(
+    aspect_ratio: float,
+    lgradB: float,
+) -> forward_model.ConstellarationMetrics:
+    """Return a ConstellarationMetrics that is feasible at all tightness levels."""
+    base = dict(
+        aspect_ratio=aspect_ratio,
+        axis_magnetic_mirror_ratio=0.1,
+        aspect_ratio_over_edge_rotational_transform=8.0,
+        axis_rotational_transform_over_n_field_periods=0.2,
+        average_triangularity=-0.6,
+        edge_rotational_transform_over_n_field_periods=0.30,
+        max_elongation=4.0,
+        qi=1e-5,  # log10 = -5, well below -3.5
+        edge_magnetic_mirror_ratio=0.1,
+        flux_compression_in_regions_of_bad_curvature=0.5,
+        vacuum_well=0.1,
+        minimum_normalized_magnetic_gradient_scale_length=lgradB,
+    )
+    return forward_model.ConstellarationMetrics(**base)
+
+
+def test_problem_for_tightness_level_returns_correct_classes() -> None:
+    assert isinstance(
+        mhd_stable_qi_scoring.problem_for_tightness_level("tight"),
+        problems.MHDStableQIStellarator,
+    )
+    assert isinstance(
+        mhd_stable_qi_scoring.problem_for_tightness_level("medium"),
+        problems.MHDStableQIStellaratorMedium,
+    )
+    assert isinstance(
+        mhd_stable_qi_scoring.problem_for_tightness_level("loose"),
+        problems.MHDStableQIStellaratorLoose,
+    )
+    with pytest.raises(ValueError, match="tightness_level"):
+        mhd_stable_qi_scoring.problem_for_tightness_level("absurd")  # type: ignore[arg-type]
+
+
+def test_score_boundaries_performance_with_precomputed_metrics() -> None:
+    # Three feasible points forming a trade-off, plus one infeasible.
+    boundaries = [
+        _rotating_ellipse_at_ar(7.0),
+        _rotating_ellipse_at_ar(9.0),
+        _rotating_ellipse_at_ar(11.0),
+        _rotating_ellipse_at_ar(8.0),  # will be made infeasible
+    ]
+    metrics = [
+        _make_metrics(7.0, 3.0),
+        _make_metrics(9.0, 5.0),
+        _make_metrics(11.0, 7.0),
+        _make_metrics(8.0, 4.0).model_copy(
+            update=dict(flux_compression_in_regions_of_bad_curvature=2.0)
+        ),
+    ]
+    score = mhd_stable_qi_scoring.score_boundaries_performance(
+        boundaries, "tight", metrics=metrics
+    )
+    # Should equal the HIV of the 3 feasible points (the 4th is infeasible).
+    feasible_objs = np.array(
+        [
+            (-3.0, 7.0),
+            (-5.0, 9.0),
+            (-7.0, 11.0),
+        ]
+    )
+    expected = mhd_stable_qi_scoring.hypervolume(
+        feasible_objs, mhd_stable_qi_scoring.REFERENCE_POINT_LGRADB_AR
+    )
+    assert score == pytest.approx(expected, rel=1e-9)
+
+
+def test_score_boundaries_performance_returns_zero_when_no_feasible() -> None:
+    boundaries = [_rotating_ellipse_at_ar(8.0)]
+    metrics = [
+        _make_metrics(8.0, 4.0).model_copy(
+            update=dict(flux_compression_in_regions_of_bad_curvature=5.0)
+        )
+    ]
+    score = mhd_stable_qi_scoring.score_boundaries_performance(
+        boundaries, "tight", metrics=metrics
+    )
+    assert score == 0.0
+
+
+def test_score_boundaries_performance_loose_admits_more_than_tight() -> None:
+    # A configuration violating Tight constraints but satisfying Loose.
+    boundaries = [_rotating_ellipse_at_ar(8.0)]
+    metrics = [
+        _make_metrics(8.0, 4.0).model_copy(
+            update=dict(
+                # vacuum_well -0.04 -> fails tight (>=0) and medium (>=-0.025)
+                # but passes loose (>=-0.05).
+                vacuum_well=-0.04,
+            )
+        )
+    ]
+    tight = mhd_stable_qi_scoring.score_boundaries_performance(
+        boundaries, "tight", metrics=metrics
+    )
+    medium = mhd_stable_qi_scoring.score_boundaries_performance(
+        boundaries, "medium", metrics=metrics
+    )
+    loose = mhd_stable_qi_scoring.score_boundaries_performance(
+        boundaries, "loose", metrics=metrics
+    )
+    assert tight == 0.0
+    assert medium == 0.0
+    assert loose > 0.0
+
+
+def test_score_boundaries_performance_validates_metrics_length() -> None:
+    boundaries = [_rotating_ellipse_at_ar(7.0), _rotating_ellipse_at_ar(8.0)]
+    metrics = [_make_metrics(7.0, 3.0)]  # mismatched length
+    with pytest.raises(ValueError, match="same length"):
+        mhd_stable_qi_scoring.score_boundaries_performance(
+            boundaries, "tight", metrics=metrics
+        )
+
+
+def test_score_boundaries_diversity_returns_zero_with_too_few_feasible() -> None:
+    boundaries = [_rotating_ellipse_at_ar(7.0)]
+    metrics = [_make_metrics(7.0, 3.0)]
+    assert (
+        mhd_stable_qi_scoring.score_boundaries_diversity(
+            boundaries, "tight", metrics=metrics
+        )
+        == 0.0
+    )
+
+
+def test_score_boundaries_diversity_matches_binned_score_on_included_set() -> None:
+    # 4 feasible boundaries: 2 in bin 6.3, 2 in bin 9.3. All in L0 (different
+    # trade-offs), so the HIV filter keeps all of them.
+    boundaries = [
+        _rotating_ellipse_at_ar(6.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(6.3, triangularity=0.1),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.15),
+    ]
+    metrics = [
+        _make_metrics(6.3, 3.0),
+        _make_metrics(6.3, 2.9),
+        _make_metrics(9.3, 5.0),
+        _make_metrics(9.3, 4.9),
+    ]
+    score = mhd_stable_qi_scoring.score_boundaries_diversity(
+        boundaries,
+        "tight",
+        metrics=metrics,
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    # Manually compute the expected per-bin distances.
+    d_bin1 = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        boundaries[0], boundaries[1], n_poloidal_points=8, n_toroidal_points=8
+    )
+    d_bin2 = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        boundaries[2], boundaries[3], n_poloidal_points=8, n_toroidal_points=8
+    )
+    expected = (d_bin1 + d_bin2) / 10.0
+    assert score == pytest.approx(expected, rel=1e-3)
+
+
+def test_score_boundaries_diversity_drops_dominated_levels_via_hiv_filter() -> None:
+    # Add a dominated configuration in a third bin. With the default 90%
+    # filter it should be dropped, so the bin score for that third bin is 0
+    # and the overall score matches the two-bin case.
+    boundaries = [
+        _rotating_ellipse_at_ar(6.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(6.3, triangularity=0.1),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.0),
+        _rotating_ellipse_at_ar(9.3, triangularity=0.15),
+        # A duplicated point in another bin, but dominated by all of the
+        # above (worse lgradB AND worse AR -- AR farther from 6 than 9.3
+        # is 11.7, and we give it very low lgradB so it's dominated).
+        _rotating_ellipse_at_ar(11.7, triangularity=0.0),
+        _rotating_ellipse_at_ar(11.7, triangularity=0.2),
+    ]
+    metrics = [
+        _make_metrics(6.3, 3.0),
+        _make_metrics(6.3, 2.9),
+        _make_metrics(9.3, 5.0),
+        _make_metrics(9.3, 4.9),
+        # Very low lgradB AND high AR -> dominated by all others above.
+        _make_metrics(11.7, 0.1),
+        _make_metrics(11.7, 0.05),
+    ]
+    score = mhd_stable_qi_scoring.score_boundaries_diversity(
+        boundaries,
+        "tight",
+        metrics=metrics,
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    # Compare to score without the dominated bin: should be approximately
+    # equal because the HIV filter drops the dominated points.
+    score_no_dom = mhd_stable_qi_scoring.score_boundaries_diversity(
+        boundaries[:4],
+        "tight",
+        metrics=metrics[:4],
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    assert score == pytest.approx(score_no_dom, rel=1e-9)

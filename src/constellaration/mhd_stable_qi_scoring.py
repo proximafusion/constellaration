@@ -11,12 +11,16 @@ they are also reusable for other multi-objective post-analyses.
 from __future__ import annotations
 
 import itertools
+from typing import Literal
 
 import jaxtyping as jt
 import numpy as np
 from pymoo.indicators import hv
 
+from constellaration import forward_model, problems
 from constellaration.geometry import surface_rz_fourier
+
+TightnessLevel = Literal["tight", "medium", "loose"]
 
 DEFAULT_AR_MIN = 6.0
 DEFAULT_AR_MAX = 12.0
@@ -24,6 +28,39 @@ DEFAULT_N_BINS = 10
 DEFAULT_MAX_PER_BIN = 15
 DEFAULT_N_POLOIDAL_POINTS = 32
 DEFAULT_N_TOROIDAL_POINTS = 32
+
+REFERENCE_POINT_LGRADB_AR = np.array([1.0, 20.0])
+"""HIV reference point in ``(-lgradB, aspect_ratio)`` minimization space."""
+
+DEFAULT_INCLUSION_HIV_FRACTION = 0.9
+"""Fraction of L0 HIV at which to stop including sub-fronts for diversity."""
+
+
+def problem_for_tightness_level(
+    tightness_level: TightnessLevel,
+) -> problems.MHDStableQIStellarator:
+    """Return the MHD-stable QI problem instance for the given tightness level."""
+    if tightness_level == "tight":
+        return problems.MHDStableQIStellarator()
+    if tightness_level == "medium":
+        return problems.MHDStableQIStellaratorMedium()
+    if tightness_level == "loose":
+        return problems.MHDStableQIStellaratorLoose()
+    raise ValueError(
+        f"tightness_level must be 'tight', 'medium' or 'loose', got "
+        f"{tightness_level!r}"
+    )
+
+
+def _compute_metrics(
+    boundaries: list[surface_rz_fourier.SurfaceRZFourier],
+) -> list[forward_model.ConstellarationMetrics]:
+    settings = forward_model.ConstellarationSettings.default_high_fidelity()
+    out: list[forward_model.ConstellarationMetrics] = []
+    for boundary in boundaries:
+        metrics, _ = forward_model.forward_model(boundary=boundary, settings=settings)
+        out.append(metrics)
+    return out
 
 
 def pareto_levels(
@@ -252,3 +289,140 @@ def _mean_pairwise_rms_distance(
             )
         )
     return float(np.mean(distances))
+
+
+def score_boundaries_performance(
+    boundaries: list[surface_rz_fourier.SurfaceRZFourier],
+    tightness_level: TightnessLevel,
+    *,
+    metrics: list[forward_model.ConstellarationMetrics] | None = None,
+) -> float:
+    """Hypervolume (HIV) of the feasible submitted boundaries at a tightness level.
+
+    Runs the constellaration forward model at high fidelity on every boundary
+    (unless precomputed ``metrics`` are passed), filters the configurations
+    feasible at ``tightness_level``, and returns the hypervolume of their
+    non-dominated front in ``(-lgradB, aspect_ratio)`` space relative to the
+    reference point ``(1.0, 20.0)``. Higher is better. Empty / all-infeasible
+    submissions score 0.
+
+    Args:
+        boundaries: Submitted plasma boundaries.
+        tightness_level: One of ``"tight"``, ``"medium"``, ``"loose"``.
+        metrics: Optional pre-computed forward-model metrics aligned with
+            ``boundaries``. Useful for repeated scoring without re-running
+            VMEC. If omitted, the forward model is invoked.
+
+    Returns:
+        Hypervolume score (a non-negative float).
+    """
+    problem = problem_for_tightness_level(tightness_level)
+    if metrics is None:
+        metrics = _compute_metrics(boundaries)
+    if len(metrics) != len(boundaries):
+        raise ValueError(
+            "metrics must have the same length as boundaries when provided"
+        )
+
+    feasible_metrics = [m for m in metrics if problem.is_feasible(m)]
+    if not feasible_metrics:
+        return 0.0
+    objectives = np.array(
+        [
+            (
+                -1.0 * m.minimum_normalized_magnetic_gradient_scale_length,
+                1.0 * m.aspect_ratio,
+            )
+            for m in feasible_metrics
+        ]
+    )
+    return hypervolume(objectives, REFERENCE_POINT_LGRADB_AR)
+
+
+def score_boundaries_diversity(
+    boundaries: list[surface_rz_fourier.SurfaceRZFourier],
+    tightness_level: TightnessLevel,
+    *,
+    metrics: list[forward_model.ConstellarationMetrics] | None = None,
+    inclusion_hiv_fraction: float = DEFAULT_INCLUSION_HIV_FRACTION,
+    ar_min: float = DEFAULT_AR_MIN,
+    ar_max: float = DEFAULT_AR_MAX,
+    n_bins: int = DEFAULT_N_BINS,
+    max_per_bin: int = DEFAULT_MAX_PER_BIN,
+    n_poloidal_points: int = DEFAULT_N_POLOIDAL_POINTS,
+    n_toroidal_points: int = DEFAULT_N_TOROIDAL_POINTS,
+) -> float:
+    """Binned geometric diversity score for boundaries near the Pareto front.
+
+    Pipeline:
+      1. Evaluate the forward model on each boundary at high fidelity
+         (unless ``metrics`` are passed).
+      2. Keep only configurations feasible at ``tightness_level``.
+      3. Compute successive Pareto levels in
+         ``(-lgradB, aspect_ratio)``-minimization space and keep the top
+         levels whose cumulative sub-front HIV stays at or above
+         ``inclusion_hiv_fraction * HIV(L0)`` (default ``0.9 * HIV(L0)``).
+      4. Score those near-optimal boundaries via
+         :func:`binned_diversity_score`: 10 AR bins from 6 to 12, top-15 by
+         lgradB per bin, mean pairwise symmetrized RMS normal-displacement
+         distance averaged across all bins (empty bins score 0).
+
+    Args:
+        boundaries: Submitted plasma boundaries.
+        tightness_level: One of ``"tight"``, ``"medium"``, ``"loose"``.
+        metrics: Optional pre-computed forward-model metrics aligned with
+            ``boundaries``.
+        inclusion_hiv_fraction: HIV-fraction-of-L0 cutoff for Pareto-level
+            inclusion. SoW default 0.9.
+        ar_min, ar_max, n_bins, max_per_bin, n_poloidal_points,
+            n_toroidal_points: Forwarded to :func:`binned_diversity_score`.
+
+    Returns:
+        Diversity score (a non-negative float).
+    """
+    problem = problem_for_tightness_level(tightness_level)
+    if metrics is None:
+        metrics = _compute_metrics(boundaries)
+    if len(metrics) != len(boundaries):
+        raise ValueError(
+            "metrics must have the same length as boundaries when provided"
+        )
+
+    feasible: list[tuple[surface_rz_fourier.SurfaceRZFourier, float, float]] = []
+    for boundary, m in zip(boundaries, metrics):
+        if problem.is_feasible(m):
+            feasible.append(
+                (
+                    boundary,
+                    m.minimum_normalized_magnetic_gradient_scale_length,
+                    m.aspect_ratio,
+                )
+            )
+    if len(feasible) < 2:
+        return 0.0
+
+    feasible_boundaries = [item[0] for item in feasible]
+    lgradB_arr = np.array([item[1] for item in feasible])
+    ar_arr = np.array([item[2] for item in feasible])
+    objectives = np.column_stack([-lgradB_arr, ar_arr])
+
+    selected = select_top_pareto_levels_by_hiv_fraction(
+        objectives,
+        reference_point=REFERENCE_POINT_LGRADB_AR,
+        fraction=inclusion_hiv_fraction,
+    )
+    if selected.size < 2:
+        return 0.0
+
+    selected_boundaries = [feasible_boundaries[int(i)] for i in selected]
+    return binned_diversity_score(
+        boundaries=selected_boundaries,
+        aspect_ratios=ar_arr[selected],
+        lgradB_values=lgradB_arr[selected],
+        ar_min=ar_min,
+        ar_max=ar_max,
+        n_bins=n_bins,
+        max_per_bin=max_per_bin,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
