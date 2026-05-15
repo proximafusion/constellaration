@@ -334,6 +334,97 @@ def compute_mean_cross_sectional_area(
     return mean_cross_sectional_area
 
 
+def compute_aspect_ratio(surface: SurfaceRZFourier) -> float:
+    """Aspect ratio (major / minor radius) of the surface, via simsopt."""
+    return float(to_simsopt(surface).aspect_ratio())
+
+
+def scale_to_aspect_ratio(
+    surface: SurfaceRZFourier,
+    target_aspect_ratio: float,
+    absolute_tolerance: float = 1e-3,
+    max_iterations: int = 50,
+) -> SurfaceRZFourier:
+    """Scale poloidal (m != 0) Fourier modes to match ``target_aspect_ratio``.
+
+    The major radius (the m=n=0 mode of ``r_cos``) is preserved; all m != 0 modes
+    are multiplied by a single factor found by bisection.
+
+    Args:
+        surface: The surface to rescale.
+        target_aspect_ratio: Desired aspect ratio. Must be > 0.
+        absolute_tolerance: Stop once ``|aspect_ratio - target| <= absolute_tolerance``.
+        max_iterations: Maximum bisection iterations.
+
+    Returns:
+        A new ``SurfaceRZFourier`` with the same major radius and rescaled
+        poloidal modes.
+
+    Raises:
+        ValueError: If ``target_aspect_ratio`` is not positive or the initial aspect
+            ratio is not finite.
+    """
+    if target_aspect_ratio <= 0:
+        raise ValueError(f"target_aspect_ratio must be > 0, got {target_aspect_ratio}")
+
+    initial_aspect_ratio = compute_aspect_ratio(surface)
+    if not np.isfinite(initial_aspect_ratio) or initial_aspect_ratio <= 0:
+        raise ValueError(
+            f"initial aspect ratio is not finite and positive: {initial_aspect_ratio}"
+        )
+
+    # The minor radius scales linearly with the m!=0 mode amplitude, so the
+    # analytic estimate is exact up to discretization noise.
+    center = initial_aspect_ratio / target_aspect_ratio
+
+    def aspect_at(scale: float) -> float:
+        return compute_aspect_ratio(_scale_poloidal_modes(surface, scale))
+
+    # Bracket around the analytic estimate; widen until the residual changes sign.
+    lower, upper = center * 0.5, center * 2.0
+    f_lower = aspect_at(lower) - target_aspect_ratio
+    f_upper = aspect_at(upper) - target_aspect_ratio
+    expansions = 0
+    while f_lower * f_upper > 0 and expansions < 10:
+        lower *= 0.5
+        upper *= 2.0
+        f_lower = aspect_at(lower) - target_aspect_ratio
+        f_upper = aspect_at(upper) - target_aspect_ratio
+        expansions += 1
+    if f_lower * f_upper > 0:
+        raise ValueError("Failed to bracket target aspect ratio via mode scaling.")
+
+    for _ in range(max_iterations):
+        mid = 0.5 * (lower + upper)
+        residual = aspect_at(mid) - target_aspect_ratio
+        if abs(residual) <= absolute_tolerance:
+            return _scale_poloidal_modes(surface, mid)
+        if residual * f_lower < 0:
+            upper, f_upper = mid, residual
+        else:
+            lower, f_lower = mid, residual
+
+    return _scale_poloidal_modes(surface, 0.5 * (lower + upper))
+
+
+def _scale_poloidal_modes(surface: SurfaceRZFourier, scale: float) -> SurfaceRZFourier:
+    """Return a copy of ``surface`` with all m != 0 Fourier modes scaled."""
+
+    def _scale(coeffs: FourierCoefficients) -> FourierCoefficients:
+        scaled = coeffs.copy()
+        scaled[1:, :] *= scale  # m = 0 row is untouched.
+        return scaled
+
+    r_cos = _scale(surface.r_cos)
+    z_sin = _scale(surface.z_sin)
+    r_sin = _scale(surface.r_sin) if surface.r_sin is not None else None
+    z_cos = _scale(surface.z_cos) if surface.z_cos is not None else None
+
+    return surface.model_copy(
+        update=dict(r_cos=r_cos, z_sin=z_sin, r_sin=r_sin, z_cos=z_cos)
+    )
+
+
 def evaluate_points_xyz(
     surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
 ) -> jt.Float[np.ndarray, "*dims 3"]:

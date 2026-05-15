@@ -1184,3 +1184,76 @@ def test_to_standard_orientation_torus_internal_cw() -> None:
     theta_phi_std[:, :, 0] = -theta_phi_std[:, :, 0] + np.pi
     points_std = surface_rz_fourier.evaluate_points_xyz(surface_std, theta_phi_std)
     np.testing.assert_allclose(points, points_std, atol=1e-12)
+
+
+# ---------- scale_to_aspect_ratio tests ----------
+
+
+def _rotating_ellipse(
+    major_radius: float, minor_radius: float
+) -> surface_rz_fourier.SurfaceRZFourier:
+    """A simple stellarator-symmetric NFP=3 rotating-ellipse boundary."""
+    r_cos = np.array(
+        [
+            [0.0, major_radius, 0.0],
+            [0.1, minor_radius, 0.05],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.1, minor_radius, 0.05],
+        ]
+    )
+    return surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+
+
+def test_scale_to_aspect_ratio_hits_target() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    for target in [6.0, 8.7, 11.7]:
+        rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+            surface, target_aspect_ratio=target
+        )
+        assert abs(surface_rz_fourier.compute_aspect_ratio(rescaled) - target) < 1e-3
+
+
+def test_scale_to_aspect_ratio_preserves_m0_modes() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=12.0
+    )
+    np.testing.assert_array_equal(rescaled.r_cos[0, :], surface.r_cos[0, :])
+    np.testing.assert_array_equal(rescaled.z_sin[0, :], surface.z_sin[0, :])
+
+
+def test_scale_to_aspect_ratio_scales_m_nonzero_modes_by_a_single_factor() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=12.0
+    )
+    nonzero_mask = np.abs(surface.r_cos[1:, :]) > 1e-12
+    ratios = rescaled.r_cos[1:, :][nonzero_mask] / surface.r_cos[1:, :][nonzero_mask]
+    np.testing.assert_allclose(ratios, ratios[0], rtol=1e-12)
+
+
+def test_scale_to_aspect_ratio_rejects_non_positive_target() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    with pytest.raises(ValueError, match="target_aspect_ratio must be > 0"):
+        surface_rz_fourier.scale_to_aspect_ratio(surface, target_aspect_ratio=0.0)
+    with pytest.raises(ValueError, match="target_aspect_ratio must be > 0"):
+        surface_rz_fourier.scale_to_aspect_ratio(surface, target_aspect_ratio=-1.0)
+
+
+def test_scale_to_aspect_ratio_is_idempotent_when_target_equals_current() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    current_ar = surface_rz_fourier.compute_aspect_ratio(surface)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=current_ar
+    )
+    np.testing.assert_allclose(rescaled.r_cos, surface.r_cos, rtol=1e-3, atol=1e-6)
+    np.testing.assert_allclose(rescaled.z_sin, surface.z_sin, rtol=1e-3, atol=1e-6)
