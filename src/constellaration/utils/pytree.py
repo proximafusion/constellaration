@@ -122,10 +122,12 @@ class _UnravelFn:
     """
 
     _leaves_info: list[_LeafInfo]
-    _treedef: jax.tree_util.PyTreeDef
+    _treedef: jax.tree_util.PyTreeDef  # pyright: ignore[reportInvalidTypeForm]
 
     def __init__(
-        self, leaves_info: list[_LeafInfo], treedef: jax.tree_util.PyTreeDef
+        self,
+        leaves_info: list[_LeafInfo],
+        treedef: jax.tree_util.PyTreeDef,  # pyright: ignore[reportInvalidTypeForm]
     ) -> None:
         self._leaves_info = leaves_info
         self._treedef = treedef
