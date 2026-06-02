@@ -18,6 +18,20 @@ from constellaration.mhd import flux_power_series, ideal_mhd_parameters, vmec_se
 vmecpp.logger.setLevel("ERROR")
 
 
+def _pad_and_transpose(
+    arr: jt.Float[np.ndarray, "ns_minus_one mn"], mnsize: int
+) -> jt.Float[np.ndarray, "mn ns"]:
+    """Prepend a zero row (for the magnetic axis) and transpose.
+
+    Reimplemented locally because ``vmecpp._pad_and_transpose`` was removed in
+    vmecpp >= 0.5.0.
+    """
+    stacked = np.vstack((np.zeros(mnsize), arr)).T
+    assert stacked.shape[1] == arr.shape[0] + 1
+    assert stacked.shape[0] == arr.shape[1]
+    return stacked
+
+
 def _deserialize_np_from_bytes(np_bytes: bytes) -> np.ndarray:
     """Loads a numpy array from raw bytes (dapper blob format)."""
     with io.BytesIO(np_bytes) as in_f:
@@ -154,9 +168,7 @@ class VmecppWOut(vmecpp.VmecWOut):
         for field in PADDED_AND_TRANSPOSED_FIELDS:
             if field in data:
                 arr = np.array(data[field])
-                data[field] = (
-                    vmecpp._pad_and_transpose(arr, arr.shape[1])
-                ).tolist()  # pyright: ignore[reportOptionalMemberAccess]
+                data[field] = (_pad_and_transpose(arr, arr.shape[1])).tolist()
 
         for field in ONLY_TRANSPOSED_FIELDS:
             if field in data:
