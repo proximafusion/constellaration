@@ -402,6 +402,50 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
         return constraint_violations / np.abs(constraint_targets)
 
 
+class MHDStableQIStellaratorMedium(MHDStableQIStellarator):
+    """Medium-tightness variant of :class:`MHDStableQIStellarator`.
+
+    Constraint bounds (1% tolerance applied as in the parent class):
+        * Edge rotational transform / NFP >= 0.20
+        * log10(QI residuals) <= -3.5
+        * Edge magnetic mirror ratio <= 0.25
+        * Flux compression in regions of bad curvature <= 0.9
+        * Vacuum well >= -0.025
+    """
+
+    _edge_rotational_transform_over_n_field_periods_lower_bound: float = 0.20
+
+    _log10_qi_upper_bound: float = -3.5
+
+    _edge_magnetic_mirror_ratio_upper_bound: float = 0.25
+
+    _flux_compression_in_regions_of_bad_curvature_upper_bound: float = 0.9
+
+    _vacuum_well_lower_bound: float = -0.025
+
+
+class MHDStableQIStellaratorLoose(MHDStableQIStellarator):
+    """Loose-tightness variant of :class:`MHDStableQIStellarator`.
+
+    Constraint bounds (1% tolerance applied as in the parent class):
+        * Edge rotational transform / NFP >= 0.15
+        * log10(QI residuals) <= -3.0
+        * Edge magnetic mirror ratio <= 0.30
+        * Flux compression in regions of bad curvature <= 1.1
+        * Vacuum well >= -0.05
+    """
+
+    _edge_rotational_transform_over_n_field_periods_lower_bound: float = 0.15
+
+    _log10_qi_upper_bound: float = -3.0
+
+    _edge_magnetic_mirror_ratio_upper_bound: float = 0.30
+
+    _flux_compression_in_regions_of_bad_curvature_upper_bound: float = 1.1
+
+    _vacuum_well_lower_bound: float = -0.05
+
+
 def _hypervolume(
     X: jt.Float[np.ndarray, "n_points n_metrics"],
     reference_point: jt.Float[np.ndarray, " n_metrics"],
