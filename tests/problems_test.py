@@ -103,6 +103,42 @@ def test_mhd_stable_problem_score_non_dominated_set_infeasible() -> None:
     assert problem._score(candidates) == 0.0
 
 
+def test_mhd_stable_medium_admits_relaxed_iota_and_negative_vacuum_well() -> None:
+    metrics = _get_test_metrics().model_copy(
+        update=dict(
+            edge_rotational_transform_over_n_field_periods=0.21,
+            vacuum_well=-0.02,
+        )
+    )
+    assert not problems.MHDStableQIStellarator().is_feasible(metrics)
+    assert problems.MHDStableQIStellaratorMedium().is_feasible(metrics)
+
+
+def test_mhd_stable_loose_admits_relaxed_qi_mirror_flux_and_vacuum_well() -> None:
+    metrics = _get_test_metrics().model_copy(
+        update=dict(
+            edge_rotational_transform_over_n_field_periods=0.16,
+            qi=10 ** (-3.05),
+            edge_magnetic_mirror_ratio=0.28,
+            flux_compression_in_regions_of_bad_curvature=1.05,
+            vacuum_well=-0.04,
+        )
+    )
+    assert not problems.MHDStableQIStellarator().is_feasible(metrics)
+    assert not problems.MHDStableQIStellaratorMedium().is_feasible(metrics)
+    assert problems.MHDStableQIStellaratorLoose().is_feasible(metrics)
+
+
+def test_mhd_stable_tight_unchanged_after_adding_medium_and_loose() -> None:
+    # Sanity check that the leaderboard-facing class still exposes the same defaults.
+    tight = problems.MHDStableQIStellarator()
+    assert tight._edge_rotational_transform_over_n_field_periods_lower_bound == 0.25
+    assert tight._log10_qi_upper_bound == -3.5
+    assert tight._edge_magnetic_mirror_ratio_upper_bound == 0.25
+    assert tight._flux_compression_in_regions_of_bad_curvature_upper_bound == 0.9
+    assert tight._vacuum_well_lower_bound == 0.0
+
+
 def _get_test_metrics() -> forward_model.ConstellarationMetrics:
     return forward_model.ConstellarationMetrics(
         aspect_ratio=4.0,

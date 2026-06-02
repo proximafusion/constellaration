@@ -1184,3 +1184,274 @@ def test_to_standard_orientation_torus_internal_cw() -> None:
     theta_phi_std[:, :, 0] = -theta_phi_std[:, :, 0] + np.pi
     points_std = surface_rz_fourier.evaluate_points_xyz(surface_std, theta_phi_std)
     np.testing.assert_allclose(points, points_std, atol=1e-12)
+
+
+# ---------- scale_to_aspect_ratio tests ----------
+
+
+def _rotating_ellipse(
+    major_radius: float, minor_radius: float
+) -> surface_rz_fourier.SurfaceRZFourier:
+    """A simple stellarator-symmetric NFP=3 rotating-ellipse boundary."""
+    r_cos = np.array(
+        [
+            [0.0, major_radius, 0.0],
+            [0.1, minor_radius, 0.05],
+        ]
+    )
+    z_sin = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.1, minor_radius, 0.05],
+        ]
+    )
+    return surface_rz_fourier.SurfaceRZFourier(
+        r_cos=r_cos,
+        z_sin=z_sin,
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+
+
+def test_scale_to_aspect_ratio_hits_target() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    for target in [6.0, 8.7, 11.7]:
+        rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+            surface, target_aspect_ratio=target
+        )
+        assert abs(surface_rz_fourier.compute_aspect_ratio(rescaled) - target) < 1e-3
+
+
+def test_scale_to_aspect_ratio_preserves_m0_modes() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=12.0
+    )
+    np.testing.assert_array_equal(rescaled.r_cos[0, :], surface.r_cos[0, :])
+    np.testing.assert_array_equal(rescaled.z_sin[0, :], surface.z_sin[0, :])
+
+
+def test_scale_to_aspect_ratio_scales_m_nonzero_modes_by_a_single_factor() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=12.0
+    )
+    nonzero_mask = np.abs(surface.r_cos[1:, :]) > 1e-12
+    ratios = rescaled.r_cos[1:, :][nonzero_mask] / surface.r_cos[1:, :][nonzero_mask]
+    np.testing.assert_allclose(ratios, ratios[0], rtol=1e-12)
+
+
+def test_scale_to_aspect_ratio_rejects_non_positive_target() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    with pytest.raises(ValueError, match="target_aspect_ratio must be > 0"):
+        surface_rz_fourier.scale_to_aspect_ratio(surface, target_aspect_ratio=0.0)
+    with pytest.raises(ValueError, match="target_aspect_ratio must be > 0"):
+        surface_rz_fourier.scale_to_aspect_ratio(surface, target_aspect_ratio=-1.0)
+
+
+def test_scale_to_aspect_ratio_is_idempotent_when_target_equals_current() -> None:
+    surface = _rotating_ellipse(major_radius=10.0, minor_radius=1.0)
+    current_ar = surface_rz_fourier.compute_aspect_ratio(surface)
+    rescaled = surface_rz_fourier.scale_to_aspect_ratio(
+        surface, target_aspect_ratio=current_ar
+    )
+    np.testing.assert_allclose(rescaled.r_cos, surface.r_cos, rtol=1e-3, atol=1e-6)
+    np.testing.assert_allclose(rescaled.z_sin, surface.z_sin, rtol=1e-3, atol=1e-6)
+
+
+# ---------- compute_rms_normal_displacement_distance tests ----------
+
+
+def test_rms_normal_displacement_distance_zero_for_identical_surfaces() -> None:
+    surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.5]]),
+        z_sin=np.array([[0.0], [0.5]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    distance = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        surface_1=surface,
+        surface_2=surface,
+        n_poloidal_points=8,
+        n_toroidal_points=8,
+    )
+    assert distance == pytest.approx(0.0, abs=1e-12)
+
+
+def test_rms_normal_displacement_distance_is_symmetric() -> None:
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    b = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.1], [0.5]]),
+        z_sin=np.array([[0.0], [0.5]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    d_ab = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=8, n_toroidal_points=8
+    )
+    d_ba = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        b, a, n_poloidal_points=8, n_toroidal_points=8
+    )
+    assert d_ab == pytest.approx(d_ba, rel=1e-12)
+
+
+def test_rms_normal_displacement_distance_matches_radial_offset() -> None:
+    delta = 0.2
+    target_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    comparison_surface = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0 + delta], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    # For an axisymmetric horizontal offset, the signed normal projection
+    # equals delta * cos(theta) on the target, so RMS = delta / sqrt(2).
+    distance = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        target_surface,
+        comparison_surface,
+        n_poloidal_points=64,
+        n_toroidal_points=8,
+    )
+    assert distance == pytest.approx(delta / np.sqrt(2.0), rel=5e-2)
+
+
+def test_rms_normal_displacement_distance_differs_from_mean_abs_version() -> None:
+    # The new RMS version is not the same as the existing mean-abs version
+    # for non-uniform displacements: RMS >= mean(|.|) with equality only when
+    # the signed distances are constant. We construct surfaces whose
+    # displacement varies poloidally so the two metrics differ measurably.
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.0], [0.4]]),
+        z_sin=np.array([[0.0], [0.4]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    b = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[3.05], [0.6]]),  # different minor radius too
+        z_sin=np.array([[0.0], [0.6]]),
+        n_field_periods=1,
+        is_stellarator_symmetric=True,
+    )
+    rms = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=32, n_toroidal_points=8
+    )
+    mean_abs = surface_rz_fourier.compute_normal_displacement_distance(
+        a, b, n_poloidal_points=32, n_toroidal_points=8
+    )
+    assert rms > mean_abs > 0
+
+
+# ---------- compare_augmentations behavior ----------
+
+
+def test_rms_distance_is_invariant_under_stellarator_augmentation() -> None:
+    """A surface and any of its 8 stellarator-symmetric augmentations describe
+    the same physical configuration, so the distance must be ~0 by default."""
+    base = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    import itertools
+
+    for switches in itertools.product([False, True], repeat=3):
+        augmented = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+            base, augmentation_switches=list(switches)
+        )
+        d = surface_rz_fourier.compute_rms_normal_displacement_distance(
+            base, augmented, n_poloidal_points=16, n_toroidal_points=16
+        )
+        assert d == pytest.approx(
+            0.0, abs=1e-6
+        ), f"distance under switches={switches} was {d}, expected ~0"
+
+
+def test_rms_distance_with_compare_augmentations_off_sees_relabeling() -> None:
+    """With the augmentation search disabled, a toroidal-shift augmentation
+    produces a positive distance even though the 3D shape is unchanged."""
+    base = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    shifted = surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+        base, augmentation_switches=[False, True, False]
+    )
+    d = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        base,
+        shifted,
+        n_poloidal_points=16,
+        n_toroidal_points=16,
+        compare_augmentations=False,
+    )
+    assert d > 0.1
+
+
+def test_rms_distance_with_compare_augmentations_matches_explicit_min() -> None:
+    """The default-on output should equal the minimum across the 8 augmentations
+    of surface_2 computed via the plain (off) variant."""
+    import itertools
+
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    b = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.15, 1.05, 0.18]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.12, 1.05, 0.18]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=True,
+    )
+    explicit_min = min(
+        surface_rz_fourier.compute_rms_normal_displacement_distance(
+            a,
+            surface_rz_fourier.generate_stellarator_symmetric_augmentation(
+                b, augmentation_switches=list(switches)
+            ),
+            n_poloidal_points=16,
+            n_toroidal_points=16,
+            compare_augmentations=False,
+        )
+        for switches in itertools.product([False, True], repeat=3)
+    )
+    auto_min = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=True
+    )
+    assert auto_min == pytest.approx(explicit_min, rel=1e-12)
+
+
+def test_rms_distance_falls_back_to_pairwise_when_not_stellarator_symmetric() -> None:
+    """For non-stellarator-symmetric surfaces the augmentation scheme does not
+    apply; the function should silently fall back to the plain pairwise
+    distance instead of raising."""
+    a = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[0.0, 10.0, 0.0], [0.1, 1.0, 0.2]]),
+        z_sin=np.array([[0.0, 0.0, 0.0], [0.1, 1.0, 0.2]]),
+        r_sin=np.array([[0.0, 0.0, 0.0], [0.0, 0.05, 0.0]]),
+        z_cos=np.array([[0.0, 0.0, 0.0], [0.0, 0.05, 0.0]]),
+        n_field_periods=3,
+        is_stellarator_symmetric=False,
+    )
+    b = a.model_copy()
+    # With the flag on but inputs non-symmetric, expect the same answer as off.
+    d_on = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=True
+    )
+    d_off = surface_rz_fourier.compute_rms_normal_displacement_distance(
+        a, b, n_poloidal_points=16, n_toroidal_points=16, compare_augmentations=False
+    )
+    assert d_on == pytest.approx(d_off, rel=1e-12)

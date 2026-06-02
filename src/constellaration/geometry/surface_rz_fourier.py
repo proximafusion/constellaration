@@ -334,6 +334,97 @@ def compute_mean_cross_sectional_area(
     return mean_cross_sectional_area
 
 
+def compute_aspect_ratio(surface: SurfaceRZFourier) -> float:
+    """Aspect ratio (major / minor radius) of the surface, via simsopt."""
+    return float(to_simsopt(surface).aspect_ratio())
+
+
+def scale_to_aspect_ratio(
+    surface: SurfaceRZFourier,
+    target_aspect_ratio: float,
+    absolute_tolerance: float = 1e-3,
+    max_iterations: int = 50,
+) -> SurfaceRZFourier:
+    """Scale poloidal (m != 0) Fourier modes to match ``target_aspect_ratio``.
+
+    The major radius (the m=n=0 mode of ``r_cos``) is preserved; all m != 0 modes
+    are multiplied by a single factor found by bisection.
+
+    Args:
+        surface: The surface to rescale.
+        target_aspect_ratio: Desired aspect ratio. Must be > 0.
+        absolute_tolerance: Stop once ``|aspect_ratio - target| <= absolute_tolerance``.
+        max_iterations: Maximum bisection iterations.
+
+    Returns:
+        A new ``SurfaceRZFourier`` with the same major radius and rescaled
+        poloidal modes.
+
+    Raises:
+        ValueError: If ``target_aspect_ratio`` is not positive or the initial aspect
+            ratio is not finite.
+    """
+    if target_aspect_ratio <= 0:
+        raise ValueError(f"target_aspect_ratio must be > 0, got {target_aspect_ratio}")
+
+    initial_aspect_ratio = compute_aspect_ratio(surface)
+    if not np.isfinite(initial_aspect_ratio) or initial_aspect_ratio <= 0:
+        raise ValueError(
+            f"initial aspect ratio is not finite and positive: {initial_aspect_ratio}"
+        )
+
+    # The minor radius scales linearly with the m!=0 mode amplitude, so the
+    # analytic estimate is exact up to discretization noise.
+    center = initial_aspect_ratio / target_aspect_ratio
+
+    def aspect_at(scale: float) -> float:
+        return compute_aspect_ratio(_scale_poloidal_modes(surface, scale))
+
+    # Bracket around the analytic estimate; widen until the residual changes sign.
+    lower, upper = center * 0.5, center * 2.0
+    f_lower = aspect_at(lower) - target_aspect_ratio
+    f_upper = aspect_at(upper) - target_aspect_ratio
+    expansions = 0
+    while f_lower * f_upper > 0 and expansions < 10:
+        lower *= 0.5
+        upper *= 2.0
+        f_lower = aspect_at(lower) - target_aspect_ratio
+        f_upper = aspect_at(upper) - target_aspect_ratio
+        expansions += 1
+    if f_lower * f_upper > 0:
+        raise ValueError("Failed to bracket target aspect ratio via mode scaling.")
+
+    for _ in range(max_iterations):
+        mid = 0.5 * (lower + upper)
+        residual = aspect_at(mid) - target_aspect_ratio
+        if abs(residual) <= absolute_tolerance:
+            return _scale_poloidal_modes(surface, mid)
+        if residual * f_lower < 0:
+            upper, f_upper = mid, residual
+        else:
+            lower, f_lower = mid, residual
+
+    return _scale_poloidal_modes(surface, 0.5 * (lower + upper))
+
+
+def _scale_poloidal_modes(surface: SurfaceRZFourier, scale: float) -> SurfaceRZFourier:
+    """Return a copy of ``surface`` with all m != 0 Fourier modes scaled."""
+
+    def _scale(coeffs: FourierCoefficients) -> FourierCoefficients:
+        scaled = coeffs.copy()
+        scaled[1:, :] *= scale  # m = 0 row is untouched.
+        return scaled
+
+    r_cos = _scale(surface.r_cos)
+    z_sin = _scale(surface.z_sin)
+    r_sin = _scale(surface.r_sin) if surface.r_sin is not None else None
+    z_cos = _scale(surface.z_cos) if surface.z_cos is not None else None
+
+    return surface.model_copy(
+        update=dict(r_cos=r_cos, z_sin=z_sin, r_sin=r_sin, z_cos=z_cos)
+    )
+
+
 def evaluate_points_xyz(
     surface: SurfaceRZFourier, theta_phi: jt.Float[np.ndarray, "*dims 2"]
 ) -> jt.Float[np.ndarray, "*dims 3"]:
@@ -610,6 +701,118 @@ def compute_normal_displacement_distance(
     average_forward_distance = jnp.mean(jnp.abs(forward_distances))
     average_backward_distance = jnp.mean(jnp.abs(backward_distances))
     return float(0.5 * (average_forward_distance + average_backward_distance))
+
+
+def compute_rms_normal_displacement_distance(
+    surface_1: SurfaceRZFourier,
+    surface_2: SurfaceRZFourier,
+    n_poloidal_points: int = 32,
+    n_toroidal_points: int = 32,
+    compare_augmentations: bool = True,
+) -> float:
+    """Symmetrized RMS normal displacement distance between two surfaces.
+
+    For each surface, the signed normal distance to the other surface is
+    evaluated on a ``n_poloidal_points x n_toroidal_points`` grid and the RMS
+    is taken; the returned distance is the arithmetic mean of the two RMS
+    values, so that ``d(A, B) == d(B, A)``.
+
+    By default the distance is taken as the **minimum over all 8 x 8 = 64
+    pairs** of stellarator-symmetric augmentations of the two surfaces (see
+    :func:`generate_stellarator_symmetric_augmentation`). The 8 augmentations
+    of a stellarator-symmetric surface are sign flips of (1) ``z_sin``
+    coefficients, (2) odd toroidal modes, (3) odd poloidal modes; for a
+    well-resolved stellarator-symmetric configuration these all correspond
+    to the same physical shape under coordinate relabeling. Comparing all
+    augmentations prevents the diversity score from being inflated by
+    trivial symmetry relabelings that leave the physics unchanged. Set
+    ``compare_augmentations=False`` to recover the plain pairwise distance
+    (e.g. when ``surface_1`` or ``surface_2`` is not stellarator-symmetric,
+    or when the caller has already canonicalized the augmentation).
+
+    Args:
+        surface_1: First surface.
+        surface_2: Second surface.
+        n_poloidal_points: Number of poloidal grid points used for evaluation.
+        n_toroidal_points: Number of toroidal grid points used for evaluation.
+        compare_augmentations: If True (default), return the minimum RMS
+            distance across all 64 (aug(surface_1), aug(surface_2)) pairs.
+            Falls back automatically to the plain pairwise distance when
+            either surface is not stellarator-symmetric.
+
+    Returns:
+        The symmetrized RMS normal displacement distance between the two
+        surfaces.
+    """
+    can_augment = (
+        compare_augmentations
+        and surface_1.is_stellarator_symmetric
+        and surface_2.is_stellarator_symmetric
+    )
+    if not can_augment:
+        return _pairwise_rms_normal_displacement(
+            surface_1,
+            surface_2,
+            n_poloidal_points=n_poloidal_points,
+            n_toroidal_points=n_toroidal_points,
+        )
+
+    best = float("inf")
+    for switches in _STELLARATOR_SYMMETRY_AUGMENTATION_SWITCHES:
+        aug_2 = generate_stellarator_symmetric_augmentation(
+            surface_2, augmentation_switches=list(switches)
+        )
+        candidate = _pairwise_rms_normal_displacement(
+            surface_1,
+            aug_2,
+            n_poloidal_points=n_poloidal_points,
+            n_toroidal_points=n_toroidal_points,
+        )
+        if candidate < best:
+            best = candidate
+    return best
+
+
+def _pairwise_rms_normal_displacement(
+    surface_1: SurfaceRZFourier,
+    surface_2: SurfaceRZFourier,
+    n_poloidal_points: int,
+    n_toroidal_points: int,
+) -> float:
+    """Plain symmetrized RMS normal displacement (no augmentation search)."""
+    forward_distances = compute_normal_displacement(
+        target_surface=surface_1,
+        comparison_surface=surface_2,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    backward_distances = compute_normal_displacement(
+        target_surface=surface_2,
+        comparison_surface=surface_1,
+        n_poloidal_points=n_poloidal_points,
+        n_toroidal_points=n_toroidal_points,
+    )
+    rms_forward = jnp.sqrt(jnp.mean(forward_distances**2))
+    rms_backward = jnp.sqrt(jnp.mean(backward_distances**2))
+    return float(0.5 * (rms_forward + rms_backward))
+
+
+_STELLARATOR_SYMMETRY_AUGMENTATION_SWITCHES: tuple[tuple[bool, bool, bool], ...] = (
+    (False, False, False),
+    (False, False, True),
+    (False, True, False),
+    (False, True, True),
+    (True, False, False),
+    (True, False, True),
+    (True, True, False),
+    (True, True, True),
+)
+"""All 8 sign-flip combinations passed to
+:func:`generate_stellarator_symmetric_augmentation` to enumerate the
+stellarator-symmetric augmentations of a surface. Iterating over only
+``surface_2``'s augmentations is sufficient because the augmentation group
+acts on both sides equivalently, so the minimum over 64 pairs equals the
+minimum over the 8 augmentations of one side."""
 
 
 def set_max_mode_numbers(
