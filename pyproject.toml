@@ -26,17 +26,23 @@ dependencies = [
   "pybind11<3.0.0", # Breaking change in 3.0.0 triggers an incompatibility with booz-xform on MAC https://github.com/hiddenSymmetries/booz_xform/pull/21
   "booz-xform==0.0.9",
   "datasets==3.5.1",
-  "desc-opt==0.14.2",
+  "desc-opt==0.17.1",
   "ipython",
   "ipykernel",
-  "interpax==0.3.8",
-  "jax<=0.6.0",
+  "interpax==0.3.14",
+  "jax<=0.10.0",
   "jaxtyping",
   "kaleido",
   "matplotlib==3.9.2",
   "nbformat",
   "nevergrad",
-  "numpy>=2.1.3",
+  # Upper bound: numpy>=2.3 turns float() of an ndim>0 array into a hard
+  # TypeError (it was a DeprecationWarning before). This breaks nevergrad's
+  # metamodel optimizer (used by NGOpt) at metamodel.py, which is unfixed in
+  # the latest release (1.0.12). numpy 2.3 also dropped Python 3.10, so CI on
+  # 3.10 stayed on numpy 2.2 and passed while 3.11+ pulled numpy 2.4 and failed.
+  # Drop this bound once nevergrad ships a fix.
+  "numpy>=2.1.3,<2.3",
   "orjson==3.10.16",
   "plotly<7.0.0",
   "pydantic",
