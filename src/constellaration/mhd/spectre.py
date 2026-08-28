@@ -35,6 +35,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pydantic
 
 from constellaration.mhd.spectre_settings import SpectreSettings
@@ -160,8 +161,8 @@ def admissible(n: int, m: int, n_field_periods: int) -> bool:
 
 
 def lowest_order_resonance(
-    iota: Sequence[float],
-    psi_n: Sequence[float],
+    iota: npt.ArrayLike,
+    psi_n: npt.ArrayLike,
     n_field_periods: int,
     max_poloidal_order: int,
 ) -> Resonance | None:
@@ -201,8 +202,8 @@ def lowest_order_resonance(
 
 
 def screen(
-    iota: Sequence[float],
-    psi_n: Sequence[float],
+    iota: npt.ArrayLike,
+    psi_n: npt.ArrayLike,
     n_field_periods: int,
     settings: SpectreSettings,
 ) -> tuple[RefusalClass, Resonance | None]:

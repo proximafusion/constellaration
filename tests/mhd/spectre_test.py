@@ -1,4 +1,5 @@
 import sys
+from typing import Any
 
 import numpy as np
 import pytest
@@ -106,8 +107,8 @@ def test_ladder_diverged_at_the_top_rung() -> None:
     assert _ladder([30.0, 20.0, 10.0, 6.0]) == ([30.0, 20.0, 10.0, 6.0], True)
 
 
-def _output(**kwargs) -> spectre.SpectreOutput:
-    base = dict(
+def _output(**kwargs: Any) -> spectre.SpectreOutput:
+    base: dict[str, Any] = dict(
         settings=spectre_settings.SpectreSettings(),
         n_field_periods=3,
         resonance=spectre.Resonance(n=6, m=5, n_crossings=1, shear=0.2752),
@@ -130,6 +131,7 @@ def test_metrics_single_chain_inside_the_domain() -> None:
     assert m.trust_pct == pytest.approx(0.41 + 100 * 1.97 * 2.48e-4)
     assert m.refusal_class is spectre.RefusalClass.NONE
     assert m.metrics_version == spectre.METRICS_VERSION
+    assert m.severity is not None
     assert spectre.predicted_flux_fraction(m.severity) == pytest.approx(
         0.825 * expected, rel=1e-2
     )
@@ -151,6 +153,8 @@ def test_metrics_sum_over_distinct_chains() -> None:
     single = spectre.compute_field_integrity_metrics(
         _output(n_field_periods=3, resonance=out.resonance, chains=[a])
     )
+    assert m.severity is not None
+    assert single.severity is not None
     assert m.severity > single.severity
     assert m.n_chains_found == 2
     assert m.merged is False
