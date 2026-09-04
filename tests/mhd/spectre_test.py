@@ -1,10 +1,10 @@
 import sys
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-from constellaration.mhd import spectre, spectre_settings
+from constellaration.mhd import spectre, spectre_settings, vmec_utils
 
 
 def _profile(lo: float, hi: float, n: int = 99) -> tuple[np.ndarray, np.ndarray]:
@@ -43,29 +43,55 @@ def test_admissible(n: int, m: int, nfp: int, ok: bool) -> None:
         (0.777, 0.788, 4, (28, 36)),
     ],
 )
-def test_lowest_order_resonance(
+def test_crossed_resonances_lowest_order_first(
     lo: float, hi: float, nfp: int, expected: tuple[int, int]
 ) -> None:
     iota, psi = _profile(lo, hi)
-    res = spectre.lowest_order_resonance(iota, psi, nfp, max_poloidal_order=40)
-    assert res is not None
-    assert (res.n, res.m) == expected
-    assert res.n_crossings == 1
-    assert res.shear == pytest.approx(hi - lo, rel=1e-6)
+    found = spectre.crossed_resonances(iota, psi, nfp, 40)
+    assert found, "the transform crosses an admissible rational"
+    assert (found[0].n, found[0].m) == expected
+    assert found[0].n_crossings == 1
+    assert found[0].shear == pytest.approx(hi - lo)
+    assert [r.m for r in found] == sorted(r.m for r in found)
+    assert all(spectre.admissible(r.n, r.m, nfp) for r in found)
+    assert all(lo <= r.iota <= hi for r in found)
+
+
+def test_crossed_resonances_enumerates_more_than_one() -> None:
+    """m05_nfp3_D7RBpfuf crosses both 3/3 and 6/5; 3/3 is the lower order."""
+    iota, psi = _profile(0.8676, 1.4284)
+    found = spectre.crossed_resonances(iota, psi, 3, 40)
+    labels = [(r.n, r.m) for r in found]
+    assert (3, 3) in labels
+    assert (6, 5) in labels
+    assert labels.index((3, 3)) < labels.index((6, 5))
+
+
+def test_select_resonances_serves_the_lowest_order() -> None:
+    iota, psi = _profile(0.8676, 1.4284)
+    found = spectre.crossed_resonances(iota, psi, 3, 40)
+    chosen = spectre.select_resonances(found)
+    assert len(chosen) == 1
+    assert (chosen[0].n, chosen[0].m) == (found[0].n, found[0].m)
+
+
+def test_crossed_resonances_empty_when_none_admissible() -> None:
+    iota, psi = _profile(0.46, 0.51)
+    assert spectre.crossed_resonances(iota, psi, 2, 3) == []
 
 
 def test_screen_no_rational() -> None:
     iota, psi = _profile(0.2199, 0.2217)  # no j/m with m <= 40 at nfp = 1
     refusal, res = spectre.screen(iota, psi, 1, spectre_settings.SpectreSettings())
     assert refusal is spectre.RefusalClass.NO_RATIONAL
-    assert res is None
+    assert res == []
 
 
 def test_screen_sign_indefinite() -> None:
     iota, psi = _profile(-0.003, 0.002)
     refusal, res = spectre.screen(iota, psi, 4, spectre_settings.SpectreSettings())
     assert refusal is spectre.RefusalClass.SIGN_INDEFINITE
-    assert res is None
+    assert res == []
 
 
 def test_screen_horizon_is_a_setting() -> None:
@@ -107,22 +133,24 @@ def test_ladder_diverged_at_the_top_rung() -> None:
     assert _ladder([30.0, 20.0, 10.0, 6.0]) == ([30.0, 20.0, 10.0, 6.0], True)
 
 
-def _output(**kwargs: Any) -> spectre.SpectreOutput:
+def _metrics(**kwargs: Any) -> spectre.FieldIntegrityMetrics:
+    """The reduction, with the commissioning row's defaults."""
     base: dict[str, Any] = dict(
-        settings=spectre_settings.SpectreSettings(),
-        n_field_periods=3,
-        resonance=spectre.Resonance(n=6, m=5, n_crossings=1, shear=0.2752),
+        refusal_class=spectre.RefusalClass.NONE,
+        resonance=spectre.ScreenedResonance(n=6, m=5, n_crossings=1, shear=0.2752),
+        chains=[],
         beltrami_residual=2.48e-4,
+        n_field_periods=3,
     )
     base.update(kwargs)
-    return spectre.SpectreOutput(**base)
+    return spectre._metrics_from(**base)
 
 
 def test_metrics_single_chain_inside_the_domain() -> None:
-    chain = spectre.IslandChain(
+    chain = spectre.SearchedChain(
         n=6, m=5, psi_n=0.64, residue_o=3.465e-3, residue_x=-3.465e-3, shear=0.2752
     )
-    m = spectre.compute_field_integrity_metrics(_output(chains=[chain]))
+    m = _metrics(chains=[chain])
     expected = 3 * (3.465e-3**2) ** 0.25 / (25 * 0.2752)
     assert m.severity == pytest.approx(expected)
     assert m.severity_poloidal_mode == 5
@@ -130,63 +158,33 @@ def test_metrics_single_chain_inside_the_domain() -> None:
     assert m.residue_ratio == pytest.approx(1.0)
     assert m.trust_pct == pytest.approx(0.41 + 100 * 1.97 * 2.48e-4)
     assert m.refusal_class is spectre.RefusalClass.NONE
-    assert m.metrics_version == spectre.METRICS_VERSION
-    assert m.severity is not None
-    assert spectre.predicted_flux_fraction(m.severity) == pytest.approx(
-        0.825 * expected, rel=1e-2
-    )
 
 
 def test_metrics_sum_over_distinct_chains() -> None:
-    a = spectre.IslandChain(
+    a = spectre.SearchedChain(
         n=3, m=8, psi_n=0.07, residue_o=1.46e-3, residue_x=-1.4e-3, shear=0.02235
     )
-    b = spectre.IslandChain(
+    b = spectre.SearchedChain(
         n=3, m=8, psi_n=0.67, residue_o=1.8e-7, residue_x=-1.8e-7, shear=0.02235
     )
-    out = _output(
-        n_field_periods=3,
-        resonance=spectre.Resonance(n=3, m=8, n_crossings=2, shear=0.02235),
-        chains=[a, b],
-    )
-    m = spectre.compute_field_integrity_metrics(out, excursion_psi=3e-2 / 0.02235)
-    single = spectre.compute_field_integrity_metrics(
-        _output(n_field_periods=3, resonance=out.resonance, chains=[a])
-    )
+    resonance = spectre.ScreenedResonance(n=3, m=8, n_crossings=2, shear=0.02235)
+    m = _metrics(resonance=resonance, chains=[a, b])
+    single = _metrics(resonance=resonance, chains=[a])
     assert m.severity is not None
     assert single.severity is not None
     assert m.severity > single.severity
+    assert m.n_chains_enumerated == 2
     assert m.n_chains_found == 2
-    assert m.merged is False
-
-
-def test_metrics_merged_withholds_the_sum() -> None:
-    a = spectre.IslandChain(
-        n=3, m=4, psi_n=0.3, residue_o=3e-2, residue_x=-3e-2, shear=0.02236
-    )
-    b = spectre.IslandChain(
-        n=3, m=4, psi_n=0.35, residue_o=4e-3, residue_x=-4e-3, shear=0.02236
-    )
-    out = _output(
-        resonance=spectre.Resonance(n=3, m=4, n_crossings=3, shear=0.02236),
-        chains=[a, b],
-    )
-    m = spectre.compute_field_integrity_metrics(out, excursion_psi=1e-3 / 0.02236)
-    assert m.severity is None
-    assert m.merged is True
-    assert m.refusal_class is spectre.RefusalClass.NONTWIST_MERGED
 
 
 def test_metrics_outside_the_domain_still_serves_m() -> None:
-    chain = spectre.IslandChain(
+    chain = spectre.SearchedChain(
         n=2, m=4, psi_n=0.7, residue_o=3.89e-2, residue_x=-1.16e-2, shear=0.0498
     )
-    m = spectre.compute_field_integrity_metrics(
-        _output(
-            n_field_periods=2,
-            resonance=spectre.Resonance(n=2, m=4, n_crossings=1, shear=0.0498),
-            chains=[chain],
-        )
+    m = _metrics(
+        n_field_periods=2,
+        resonance=spectre.ScreenedResonance(n=2, m=4, n_crossings=1, shear=0.0498),
+        chains=[chain],
     )
     assert m.pendulum_domain is False
     assert m.severity == pytest.approx(0.366, rel=2e-2)
@@ -207,6 +205,25 @@ def test_trust_envelope_bands(residual: float, trust: float | None) -> None:
 
 
 @pytest.mark.parametrize(
+    ("residue_o", "residue_x", "inside"),
+    [
+        (3.465e-3, -3.465e-3, True),  # the ratio is exactly 1
+        (3.89e-2, -1.16e-2, False),  # ratio 0.30, outside [0.85, 1.15]
+        (0.2, -0.2, False),  # |R_O| above 0.10
+        (0.0, -1e-3, False),  # a zero O residue is not a pendulum
+    ],
+)
+def test_in_pendulum_domain(residue_o: float, residue_x: float, inside: bool) -> None:
+    assert spectre.in_pendulum_domain(residue_o, residue_x) is inside
+
+
+def test_predicted_flux_fraction() -> None:
+    assert spectre.predicted_flux_fraction(0.1) == pytest.approx(
+        spectre.KAPPA * (4.0 / np.pi) * 0.1
+    )
+
+
+@pytest.mark.parametrize(
     "refusal",
     [
         spectre.RefusalClass.SIGN_INDEFINITE,
@@ -215,46 +232,52 @@ def test_trust_envelope_bands(residual: float, trust: float | None) -> None:
     ],
 )
 def test_metrics_refusals_serve_none(refusal: spectre.RefusalClass) -> None:
-    m = spectre.compute_field_integrity_metrics(
-        _output(refusal_class=refusal, chains=[])
-    )
+    m = _metrics(refusal_class=refusal, chains=[])
     assert m.severity is None
     assert m.refusal_class is refusal
 
 
 def test_metrics_no_rational_serves_zero() -> None:
-    m = spectre.compute_field_integrity_metrics(
-        _output(refusal_class=spectre.RefusalClass.NO_RATIONAL, resonance=None)
-    )
+    m = _metrics(refusal_class=spectre.RefusalClass.NO_RATIONAL, resonance=None)
     assert m.severity == 0.0
     assert m.refusal_class is spectre.RefusalClass.NO_RATIONAL
 
 
 def test_metrics_round_trip() -> None:
-    chain = spectre.IslandChain(
+    chain = spectre.SearchedChain(
         n=6, m=5, psi_n=0.64, residue_o=3.465e-3, residue_x=-3.465e-3, shear=0.2752
     )
-    m = spectre.compute_field_integrity_metrics(_output(chains=[chain]))
+    m = _metrics(chains=[chain])
     assert spectre.FieldIntegrityMetrics.model_validate(m.model_dump()) == m
 
 
-class _Wout:
+class _Equilibrium:
+    """The fields ``compute_spectre_metrics`` reads off a ``VmecppWOut``."""
+
     nfp = 2
+    n_field_periods = 2
     phi = np.linspace(0.0, 0.03, 99)
-    iota_full = np.linspace(0.46, 0.51, 99)
+    iotaf = np.linspace(0.46, 0.51, 99)
 
 
-def test_run_spectre_screens_without_spectre() -> None:
-    out = spectre.run_spectre(
-        _Wout(), spectre_settings.SpectreSettings(max_poloidal_order=3)
+def _equilibrium() -> vmec_utils.VmecppWOut:
+    return cast(vmec_utils.VmecppWOut, _Equilibrium())
+
+
+def test_compute_spectre_metrics_screens_without_spectre() -> None:
+    m = spectre.compute_spectre_metrics(
+        _equilibrium(), spectre_settings.SpectreSettings(max_poloidal_order=3)
     )
-    assert out.refusal_class is spectre.RefusalClass.NO_RATIONAL
+    assert m.refusal_class is spectre.RefusalClass.NO_RATIONAL
+    assert m.severity == 0.0
     assert "spectre" not in sys.modules
 
 
-def test_run_spectre_needs_spectre_past_the_screen(
+def test_compute_spectre_metrics_needs_spectre_past_the_screen(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setitem(sys.modules, "spectre", None)  # makes `import spectre` fail
     with pytest.raises(spectre.SpectreNotAvailableError):
-        spectre.run_spectre(_Wout(), spectre_settings.SpectreSettings())
+        spectre.compute_spectre_metrics(
+            _equilibrium(), spectre_settings.SpectreSettings()
+        )

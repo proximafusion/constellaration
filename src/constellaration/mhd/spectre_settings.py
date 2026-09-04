@@ -1,9 +1,4 @@
-"""Settings for the SPECTRE field-integrity metrics (``run_spectre``).
-
-Mirrors ``vmec_settings.py``: one flat pydantic model, one docstring per field, and
-factory functions rather than presets. Every default was measured on the commissioning
-runs described in the walkthrough page linked from ``docs/spectre_field_integrity.md``.
-"""
+"""Settings for the SPECTRE field-integrity metrics."""
 
 import math
 
@@ -20,9 +15,9 @@ class PoincareSettings(pydantic.BaseModel):
 
 
 class SpectreSettings(pydantic.BaseModel):
-    """What ``run_spectre`` needs beyond the equilibrium.
+    """What the field-integrity metrics need beyond the equilibrium.
 
-    Two things are deliberately not settings and live inside ``run_spectre``: the
+    Two things are deliberately not settings and live inside the metrics: the
     magnetic axis is always pinned to VMEC's, and a field whose Beltrami residual is
     above 5 and no longer falling with resolution is always refused as diverged. The
     chain search has a fixed wall-clock budget of 1800 s and, if it runs out, one last

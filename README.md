@@ -105,6 +105,12 @@ pytest .
 
 The optimization baseline can be executed by running the individual files within the folder `optimization_examples`.
 
+## Additional metrics
+
+### SPECTRE field integrity (optional)
+
+`constellaration.mhd.spectre` scores a design's equilibrium for the magnetic islands VMEC cannot see, using [SPECTRE](https://gitlab.com/spectre-eq/spectre): `compute_spectre_metrics(equilibrium, SpectreSettings())` returns a `FieldIntegrityMetrics` carrying the island-chain severity. The resonance screen and the reduction to metrics run without SPECTRE; the field solve and the fixed-point search need it installed separately (a Fortran source build with no PyPI release).
+
 ## Citation
 
 ```
@@ -117,7 +123,3 @@ year={2025},
 url={https://openreview.net/forum?id=NQSbGKlCpx}
 }
 ```
-
-## SPECTRE field-integrity metrics (optional)
-
-`constellaration.mhd.spectre` scores a design's equilibrium for the magnetic islands VMEC cannot see, using [SPECTRE](https://gitlab.com/spectre-eq/spectre): `run_spectre(wout, SpectreSettings())` then `compute_field_integrity_metrics(output)` → `FieldIntegrityMetrics` with the severity `M`. The screen and the metrics run without SPECTRE; the field solve needs it installed separately (a Fortran build, see `docs/spectre_field_integrity.md`).
