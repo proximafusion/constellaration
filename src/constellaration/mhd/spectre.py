@@ -300,7 +300,9 @@ def ladder(
 
 def _require_spectre() -> Any:
     try:
-        import spectre
+        # The optional backend, absent from this repository's environments and from
+        # CI -- which is the case this function exists to handle.
+        import spectre  # pyright: ignore[reportMissingImports]
     except ImportError as exc:  # pragma: no cover - depends on the environment
         raise SpectreNotAvailableError(
             "the field-integrity metrics need the SPECTRE package"
