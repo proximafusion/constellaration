@@ -14,7 +14,7 @@ def test_from_desc_fourier_rz_toroidal_surface() -> None:
         torsion=0,
         NFP=2,
         sym=True,
-    )  # Model based off of section III of Goodman et. al 2023
+    )  # Model based off of section III of Goodman et al. 2023
 
     surface = surface_utils_desc.from_desc_fourier_rz_toroidal_surface(desc_surface)
 
@@ -43,7 +43,7 @@ def test_round_trip_from_and_to_desc() -> None:
         torsion=0,
         NFP=2,
         sym=True,
-    )  # Model based off of section III of Goodman et. al 2023
+    )  # Model based off of section III of Goodman et al. 2023
 
     # Create SurfaceRZFourier surface from desc
     surface = surface_utils_desc.from_desc_fourier_rz_toroidal_surface(desc_surface)

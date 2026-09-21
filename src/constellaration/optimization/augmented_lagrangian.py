@@ -68,7 +68,7 @@ def update_augmented_lagrangian_state(
     """Updates the augmented Lagrangian state based on the current optimization state.
 
     This function updates the Lagrange multipliers and penalty parameters based on
-    the current constraints violation and settings.
+    the current constraint violation and settings.
 
     Args:
       x: Current point in the optimization space.

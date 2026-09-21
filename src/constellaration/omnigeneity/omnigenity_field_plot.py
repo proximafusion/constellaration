@@ -12,7 +12,7 @@ def plot_modb_well(
     rho: jnp.ndarray = jnp.asarray([1.0]),
     n_eta: int = 100,
 ) -> mpl_figure.Figure:
-    """Plots the B well strenght as a function of eta for different values of rho.
+    """Plots the B well strength as a function of eta for different values of rho.
 
     Args:
         field: an omnigenous field
@@ -53,7 +53,7 @@ def plot_boozer_field(
     ax: mlp_axes.Axes | None = None,
     **kwargs,
 ) -> mpl_figure.Figure:
-    """Plots the magnetic field stregnth iso-contour lines in Boozer coordinates of the
+    """Plots the magnetic field strength iso-contour lines in Boozer coordinates of the
     omnigenous field.
 
     Args:
@@ -61,8 +61,8 @@ def plot_boozer_field(
         rho: A radial coordinate to evaluate the magnetic well
         iota: The rotational transform of the omnigenous field
         n_eta: The number of points in a linearly spaced grid for the $\\eta$ coordinate
-        n_alpha: The number of point in a linearly spaced grid for the $\alpha$
-            coordiante
+        n_alpha: The number of points in a linearly spaced grid for the $\\alpha$
+            coordinate
         levels: The number of levels to plot in the contour plot
         n_fieldlines: The number of field lines to plot. If None, no field lines are
             plotted.

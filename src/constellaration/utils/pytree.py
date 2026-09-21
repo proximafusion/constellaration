@@ -20,8 +20,9 @@ def pydantic_flatten(
     """A jax pytree compatible implementation of flattening pydantic objects.
 
     A general pydantic.BaseModel is flattened into a tuple of children and aux_data.
-    aux_data is used to reconstruct the same type of Pydantic in unflatten. meta_fields
-    are used to specify fields that should not be visible to pytree operations. See
+    aux_data is used to reconstruct the same type of Pydantic model in unflatten.
+    meta_fields are used to specify fields that should not be visible to pytree
+    operations. See
     https://jax.readthedocs.io/en/latest/_autosummary/jax.tree_util.register_dataclass.html
     for details.
     """
@@ -57,10 +58,10 @@ def pydantic_unflatten(
     and children-meta_fields split in aux_data, it constructs a new Pydantic object.
 
     Note that this object will typically not validate against the Pydantic
-    specification. Pytrees are used to manipulate the data stored in leafs and thus can
-    contain anything. Pytrees only make statements about the structure of the data, not
-    the content. An example of data manipulation might be to filter data in a pytree by
-    type:
+    specification. Pytrees are used to manipulate the data stored in leaves and thus
+    can contain anything. Pytrees only make statements about the structure of the
+    data, not the content. An example of data manipulation might be to filter data in
+    a pytree by type:
 
     ```
     my_data = MyModel(...)
@@ -84,8 +85,8 @@ def register_pydantic_data(cls: type, meta_fields: list[str] | None = None) -> t
 
     Args:
         cls: The pydantic.BaseModel class to register.
-        meta_fields: Fields that should be part of aux_data rather becoming children.
-            Defaults to None.
+        meta_fields: Fields that should be part of aux_data rather than becoming
+            children. Defaults to None.
 
     Returns:
         The registered class, to enable the function to be used as a decorator.

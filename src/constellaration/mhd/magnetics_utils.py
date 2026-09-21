@@ -9,7 +9,7 @@ def vacuum_well(
     equilibrium: vmec_utils.VmecppWOut,
 ) -> float:
     r"""Computes a single number that summarizes the vacuum magnetic well, given by the
-    formula.
+    formula below.
 
     This function reproduces the `vacuum_well` function in Simsopt.
 

@@ -23,13 +23,13 @@ FourierModes = jt.Int[np.ndarray, "n_poloidal_modes n_toroidal_modes"]
 class SurfaceRZFourier(pydantic_numpy.BaseModelWithNumpy):
     r"""Represents a toroidal (homeomorphic to a torus) surface as a Fourier series.
 
-    The surface maps the polodial angle theta and the toroidal angle phi to points in
+    The surface maps the poloidal angle theta and the toroidal angle phi to points in
     3D space expressed in cylindrical coordinates (r, phi, z).
 
         r(theta, phi) = sum_{m, n} r_{m, n}^{cos} cos(m theta - NFP n phi)
                              + r_{m, n}^{sin} sin(m theta - NFP n phi)
         z(theta, phi) = sum_{m, n} z_{m, n}^{sin} sin(m theta - NFP n phi)
-                                + z_{m, n}^{cos} cos(m theta - n phi)
+                                + z_{m, n}^{cos} cos(m theta - NFP n phi)
         phi(theta, phi) = phi
 
     where theta is in [0, 2 pi] and phi is in [0, 2 pi / NFP], and the sum is over
@@ -47,7 +47,7 @@ class SurfaceRZFourier(pydantic_numpy.BaseModelWithNumpy):
     - z_sin: z_{m, n}^{sin}
     - z_cos: z_{m, n}^{cos}
 
-    If r_sin and z_cos are None, then stellarator symmetry is assumed and viceversa.
+    If r_sin and z_cos are None, then stellarator symmetry is assumed and vice versa.
     """
 
     r_cos: FourierCoefficients
@@ -180,7 +180,7 @@ def to_simsopt(
     surface: SurfaceRZFourier,
     theta_phi: jt.Float[np.ndarray, "n_theta n_phi 2"] | None = None,
 ) -> geo.SurfaceRZFourier:
-    """Convert a surface in the types module to a simsopt surface RZ Fourier."""
+    """Convert a SurfaceRZFourier to a SIMSOPT SurfaceRZFourier."""
     simsopt_surface = geo.SurfaceRZFourier(
         nfp=surface.n_field_periods,
         stellsym=surface.is_stellarator_symmetric,
@@ -225,7 +225,7 @@ def get_largest_non_zero_modes(
     SurfaceRZFourier.
 
     Args:
-        surface: The surface to trim.
+        surface: The surface to inspect.
         tolerance: The tolerance for considering a coefficient as zero.
     """
     coeff_arrays = [surface.r_cos, surface.z_sin]
@@ -713,7 +713,7 @@ def compute_rms_normal_displacement_distance(
     """Symmetrized RMS normal displacement distance between two surfaces.
 
     For each surface, the signed normal distance to the other surface is
-    evaluated on a ``n_poloidal_points x n_toroidal_points`` grid and the RMS
+    evaluated on an ``n_poloidal_points x n_toroidal_points`` grid and the RMS
     is taken; the returned distance is the arithmetic mean of the two RMS
     values, so that ``d(A, B) == d(B, A)``.
 
@@ -909,12 +909,12 @@ def compute_infinity_norm_spectrum_scaling_fun(
     toroidal_modes: jt.Int[np.ndarray, " n_modes"],
     alpha: float,
 ) -> jt.Float[np.ndarray, " n_modes"]:
-    r"""Compute a scale for SurfaceRZFourier Fourier coefficients based on a L-infinity
+    r"""Compute a scale for SurfaceRZFourier Fourier coefficients based on an L-infinity
     norm of the modes.
 
     The spectrum scaling is computed as:
 
-    ... math::
+    .. math::
 
         e^{-alpha * max(|m|, |n|)}
 
@@ -976,7 +976,7 @@ def get_named_mode_values(
 
     Example:
     ```python
-    boundary = rz_fourier_types.SurfaceRZFourier(
+    boundary = SurfaceRZFourier(
         r_cos = np.array([[0.0, 1.0, 3.0], [4.0, 5.0, 6.0]]),
         z_sin = np.array([[0.0, 0.0, 0.1], [10.0, 11.0, 12.0]]),
         n_field_periods = 2,
@@ -1127,7 +1127,7 @@ def shift_in_angular_variables(
         If you apply a phase shift $\Delta\theta$ to $\theta$ and $\Delta\phi$ to $\phi$,
         the transformed coordinates become:
 
-        ... math::
+        .. math::
             \theta' = \theta + \Delta\theta \,
 
             \phi' = \phi + \Delta\phi \,
@@ -1136,7 +1136,7 @@ def shift_in_angular_variables(
 
         The original equations for $R(\theta, \phi)$ and $Z(\theta, \phi)$ involve terms like:
 
-        ... math::
+        .. math::
 
             \cos\left(m\theta - n_{\text{fp}} n\phi\right) \,
 
@@ -1144,7 +1144,7 @@ def shift_in_angular_variables(
 
     After applying the phase shifts, these terms transform as follows:
 
-        ... math::
+        .. math::
 
             \cos\left(m(\theta + \Delta\theta) - n_{\text{fp}} n(\phi + \Delta\phi)\right) \,
 
@@ -1154,7 +1154,7 @@ def shift_in_angular_variables(
 
         Using trigonometric identities, these expressions become:
 
-        ... math::
+        .. math::
 
             \cos\left(m\theta - n_{\text{fp}} n\phi + m\Delta\theta - n_{\text{fp}} n\Delta\phi\right) \,
 
@@ -1167,22 +1167,22 @@ def shift_in_angular_variables(
 
         For :math:`r_{c,m,n}`:
 
-        ... math::
+        .. math::
             r'_{c,m,n} = r_{c,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) - r_{s,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
 
         For :math:`r_{s,m,n}`:
 
-        ... math::
+        .. math::
             r'_{s,m,n} = r_{s,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) + r_{c,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
 
         For :math:`z_{s,m,n}`:
 
-        ... math::
+        .. math::
             z'_{s,m,n} = z_{s,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) + z_{c,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
 
-        For :math: `z_{c,m,n}`:
+        For :math:`z_{c,m,n}`:
 
-        ... math::
+        .. math::
             z'_{c,m,n} = z_{c,m,n} \cos(m\Delta\theta - n_{\text{fp}} n\Delta\phi) - z_{s,m,n} \sin(m\Delta\theta - n_{\text{fp}} n\Delta\phi) \,
 
     Args:
@@ -1253,7 +1253,7 @@ def _generate_stellarator_symmetric_augmentation_from_named_modes(
     keys should be of the form `r_cos(m, n)` or `z_sin(m, n)`. The function will return
     a dictionary containing the named modes of the stellarator symmetric augmentation.
 
-    The order of the augmentation switches that can be simulatanously applied (by)
+    The augmentation switches, which can be applied simultaneously, are (in order):
     1. Flipping the sign of z_sin coefficients (mirror symmetry about the z = 0 plane)
     2. Flipping the sign of odd toroidal modes (shift the surface toroidally
         by np.pi / n_field_periods)
@@ -1291,8 +1291,7 @@ def _generate_stellarator_symmetric_augmentation_from_named_modes(
         'z_sin(1, 0)': 0.26476756,
         'z_sin(1, 1)': 0.13379441,
     }
-    augmentation_switches = [True, False, True]  # flip z_sin and flip odd poloidal
-        modes
+    augmentation_switches = [True, False, True]  # flip z_sin and odd poloidal modes
 
     augmentations = _generate_stellarator_symmetric_augmentation_from_named_modes(
         named_rz_fourier_modes, augmentation_switches)
@@ -1392,7 +1391,7 @@ def generate_stellarator_symmetric_augmentation(
 ) -> SurfaceRZFourier:
     """Generates a stellarator symmetric augmentation of the input surface.
 
-    The order of the augmentation switches that can be simulatanously applied (by)
+    The augmentation switches, which can be applied simultaneously, are (in order):
     1. Flipping the sign of z_sin coefficients (mirror symmetry about the z = 0 plane)
     2. Flipping the sign of odd toroidal modes (shift the surface toroidally
         by np.pi / n_field_periods)
@@ -1403,7 +1402,7 @@ def generate_stellarator_symmetric_augmentation(
     generated using the `seed` parameter.
 
     Args:
-        named_rz_fourier_modes: The named modes to augment.
+        surface: The surface to augment.
         augmentation_switches: A list of booleans indicating which augmentations to
             apply.
         seed: The seed for the random augmentation.
@@ -1651,7 +1650,7 @@ def from_points(
     n_toroidal_modes: int,
     is_stellarator_symmetric: bool = True,
 ) -> tuple[SurfaceRZFourier, float | jt.Float[NpOrJaxArray, " "]]:
-    """Fit a fourier surface to a set of points, evaluated at the given theta and phi
+    """Fit a Fourier surface to a set of points, evaluated at the given theta and phi
     locations, by solving a linear least squares problem.
 
     Note: The fitted surface may have different Fourier coefficients than the input
@@ -1663,10 +1662,10 @@ def from_points(
 
     Args:
         points: The points to fit the surface to.
-        theta_phi: The theta and phi coordinates to which the points correspond to.
+        theta_phi: The theta and phi coordinates to which the points correspond.
         n_field_periods: The number of field periods of the resulting surface.
         n_poloidal_modes: The number of poloidal modes to use in the Fourier expansion.
-        n_toroidal_modes: The number of toroidal modes to use in the Fourier expansion
+        n_toroidal_modes: The number of toroidal modes to use in the Fourier expansion.
         is_stellarator_symmetric: Whether the resulting surface is stellarator
             symmetric. This doesn't impose any restrictions on the input points,
             non-stellarator symmetric input points will just result in a poor fit.

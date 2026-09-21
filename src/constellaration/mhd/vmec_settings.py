@@ -16,13 +16,13 @@ class VmecSettings(pydantic.BaseModel):
     """Corresponds to INDATA's mpol.
 
     VMEC will use Fourier coefficients with modes in the inclusive range
-    range [0, n_poloidal_modes - 1]
+    [0, n_poloidal_modes - 1].
     """
     max_toroidal_mode: int
     """Corresponds to INDATA's ntor.
 
     VMEC will use Fourier coefficients with modes in the inclusive range
-    [-max_toroidal_mode_number, max_toroidal_mode_number].
+    [-max_toroidal_mode, max_toroidal_mode].
     """
     n_poloidal_grid_points: int
     """Corresponds to VMEC's 'ntheta'."""
@@ -70,12 +70,12 @@ class VmecPresetSettings(pydantic.BaseModel):
             convergence rate.
      * `low_fidelity`: Optimizes for runtime over correctness/fidelity and VMEC
             convergence rate.
-    * `very_low_fidelity`: Optimizes for runtime over correctness/fidelity and
+     * `very_low_fidelity`: Optimizes for runtime over correctness/fidelity and
             VMEC convergence rate, but with a very low resolution. This is meant to be
-            used for very fast convergence in optimization tasks where.
+            used for very fast convergence in optimization tasks.
 
-    For details on the presets meaning, please refer to the respective factory functions
-    in `mhd/vmec_settings_utils.py`.
+    For details on the presets' meaning, please refer to the respective factory
+    functions in this module.
 
     """
     verbose: bool = False
@@ -99,15 +99,11 @@ def create_vmec_settings_from_preset(
     boundary: surface_rz_fourier.SurfaceRZFourier,
     settings: VmecPresetSettings,
 ) -> VmecSettings:
-    """Derives VmecSettings from the boundary of a PlasmaConfiguration according to the
-    given fidelity preset.
+    """Derives VmecSettings from a boundary according to the given fidelity preset.
 
     This task provides a standardized API to derive the VMEC resolution parameters from
     a boundary. Multiple fidelity presets are available that provide different tradeoffs
     between correctness, execution time, and convergence rate.
-
-    The MakegridOutput is required if and only if the  settings for free boundary are
-    requested.
     """
 
     if settings.fidelity == "high_fidelity":
@@ -241,8 +237,8 @@ def vmec_settings_low_fidelity_fixed_boundary(
 def vmec_settings_very_low_fidelity_fixed_boundary(
     boundary: surface_rz_fourier.SurfaceRZFourier,
 ) -> VmecSettings:
-    """A sensible low-fidelity VMEC configuration that provides defaults for the given
-    boundary by matching the boundary's Fourier resolution to VMEC++'s internal
+    """A sensible very-low-fidelity VMEC configuration that provides defaults for the
+    given boundary by matching the boundary's Fourier resolution to VMEC++'s internal
     resolution.
 
     Optimization tasks might default to these settings to speed up convergence.
