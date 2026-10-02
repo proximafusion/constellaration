@@ -34,6 +34,16 @@ jobs:
           python -m pip install hatchling hatch-vcs
           python -m hatchling build
 
+      - name: Check that the package version matches the release tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          for dist in dist/*; do
+            case "$(basename "$dist")" in
+              "constellaration-${expected}.tar.gz"|"constellaration-${expected}-"*.whl) ;;
+              *) echo "::error::$dist does not match release tag $GITHUB_REF_NAME"; exit 1 ;;
+            esac
+          done
+
       - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:

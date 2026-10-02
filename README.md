@@ -10,6 +10,41 @@
 The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/constellaration).
 The repository contains a suite of tools and notebooks for exploring the dataset, including a forward model for plasma simulation, scoring functions for optimization evaluation and data-driven generative modeling.
 
+## Reproducibility and benchmark versions
+
+This repository is under active development: new metrics, problems and dependency updates (e.g. [VMEC++](https://github.com/proximafusion/vmecpp)) can change the values computed by the forward model and the scoring functions.
+To keep results comparable, the benchmark of [Cadena et al., NeurIPS 2025](https://openreview.net/forum?id=NQSbGKlCpx) is frozen to a tagged release.
+
+| Use case | Version |
+| --- | --- |
+| [ConStellaration leaderboard](https://huggingface.co/spaces/proxima-fusion/constellaration-bench) (geometrical, simple-to-build QI, MHD-stable QI problems) | [`v0.3.0`](https://github.com/proximafusion/constellaration/releases/tag/v0.3.0) |
+| Original NeurIPS 2025 paper experiments | [`0.2.1`](https://pypi.org/project/constellaration/0.2.1/) |
+| Latest development | `main` |
+
+If you are working on the challenge or comparing against the leaderboard, install the pinned benchmark release:
+
+```bash
+pip install constellaration==0.3.0
+```
+
+or, from source:
+
+```bash
+git clone --branch v0.3.0 https://github.com/proximafusion/constellaration.git
+cd constellaration
+pip install .
+```
+
+The leaderboard evaluates every submission with exactly this version, so scores computed locally with `constellaration==0.3.0` match the leaderboard.
+Releases newer than `v0.3.0` may produce different metrics and scores and are not used by the leaderboard until explicitly announced here.
+The PyPI version always equals the git tag of the release it was built from (`constellaration==X.Y.Z` ⇔ tag `vX.Y.Z`).
+
+Differences of `v0.3.0` with respect to `0.2.1` (used for the original paper experiments) that can affect the benchmark scores:
+- The rotational transform constraint uses the absolute value of the edge rotational transform, i.e. boundaries with negative iota are no longer penalized.
+- Newer versions of VMEC++ and of other numerical dependencies (`booz-xform`, `jax`, `desc-opt`) are used, which can cause small numerical differences.
+
+To reproduce the exact numbers of the paper, use `pip install constellaration==0.2.1` (this version is no longer maintained and may require pinning older versions of its unpinned dependencies).
+
 ## Installation
 
 The following instructions have been tested on **Ubuntu 22.04** and **Ubuntu 24.04**. Other platforms may require additional steps and have not been validated.
