@@ -25,6 +25,12 @@ def test_no_optional_backend_error() -> None:
     assert not hasattr(spectre, "SpectreNotAvailableError")
 
 
+def test_every_metrics_field_is_documented() -> None:
+    fields = spectre.FieldIntegrityMetrics.model_fields
+    undocumented = [name for name, field in fields.items() if not field.description]
+    assert undocumented == []
+
+
 @pytest.mark.parametrize(
     ("n", "m", "nfp", "ok"),
     [
