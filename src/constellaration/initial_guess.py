@@ -53,7 +53,7 @@ def generate_nae(
     max_poloidal_mode: int = 1,
     max_toroidal_mode: int = 1,
 ) -> surface_rz_fourier.SurfaceRZFourier:
-    """Generates a ~QI boundary generated with the near-axis expansion (NAE) framework.
+    """Generates a ~QI boundary with the near-axis expansion (NAE) framework.
 
     Args:
         aspect_ratio: The aspect ratio of the plasma.

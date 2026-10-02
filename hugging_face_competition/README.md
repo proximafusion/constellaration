@@ -27,5 +27,5 @@ This directory contains the Gradio web app and Docker setup for evaluating entri
 ## Evaluation Logic
 
 - The evaluation logic is in `evaluation.py`.
-- The app uses the [constellaration](https://pypi.org/project/constellaration/) package (version pinned in Dockerfile).
+- The app uses the [constellaration](https://pypi.org/project/constellaration/) package (version pinned in `requirements.txt`).
 - Results are displayed in the Gradio interface.

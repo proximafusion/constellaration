@@ -15,7 +15,7 @@ TEST_DATA_DIR = pathlib.Path(__file__).resolve().parent / "test_data"
 
 # Reference shapes from Hirshman 1985:
 # "Optimized Fourier representations for three-dimensional magnetic surfaces."
-# The Physics of fluids 28.5 (1985): 1387-1391.
+# The Physics of Fluids 28.5 (1985): 1387-1391.
 HIRSHMAN_1985: list[surface_rz_fourier.SurfaceRZFourier] = [
     # Square
     surface_rz_fourier.SurfaceRZFourier(

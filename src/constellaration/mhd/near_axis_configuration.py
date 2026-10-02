@@ -79,7 +79,7 @@ def generate(
     - Zero curvature of the magnetic axis at those extrema.
     - QI magnetic field up to first order.
     - Elongation of the flux surfaces below `max_elongation`.
-    - Rotational transform at the magnetic axis equal above `min_iota`.
+    - Rotational transform at the magnetic axis equal to or above `min_iota`.
 
     The initial guess for the magnetic axis follows section III of:
     Goodman, Alan, et al. "Constructing Precisely Quasi-Isodynamic

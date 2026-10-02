@@ -19,10 +19,10 @@ ANY_PROBLEM = problems.GeometricalProblem | problems.SimpleToBuildQIStellarator
 
 
 def load_source_datasets_with_no_errors() -> pd.DataFrame:
-    """Load and concatenate source datasets from HugginFace dataset.
+    """Load and concatenate source datasets from the Hugging Face dataset.
 
     Includes all ids, unfolded targets and unfolded metrics but not the contents of the
-    mhd  equilibria.
+    MHD equilibria.
     """
     dframe = datasets.load_dataset("proxima-fusion/constellaration", "default")[  # type: ignore
         "train"
@@ -213,7 +213,7 @@ def _to_Y_constraints(
     dframe: pd.DataFrame,
     problem: ANY_PROBLEM,
 ) -> np.ndarray:
-    """Extracts the constraint metrics from the DataFrame from the given problem."""
+    """Extracts the constraint metrics from the DataFrame for the given problem."""
     if isinstance(problem, problems.GeometricalProblem):
         targets = np.array(
             [
@@ -264,7 +264,7 @@ def _to_Y_objective(
     dframe: pd.DataFrame,
     problem: ANY_PROBLEM,
 ) -> np.ndarray:
-    """Extracts the objective metrics from the DataFrame from the given problem."""
+    """Extracts the objective metrics from the DataFrame for the given problem."""
     if isinstance(problem, problems.GeometricalProblem):
         return dframe["max_elongation"].to_numpy()
     elif isinstance(problem, problems.SimpleToBuildQIStellarator):

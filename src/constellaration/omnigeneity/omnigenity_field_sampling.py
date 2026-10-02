@@ -22,7 +22,7 @@ class OmnigenousFieldAndTargets(pydantic_numpy.BaseModelWithNumpy):
 
 
 class SampleMagneticWellBetaCDFSettings(pydantic.BaseModel):
-    """Settings for samplign the  magnetic well with the cdf of a beta distribution."""
+    """Settings for sampling the magnetic well with the cdf of a beta distribution."""
 
     beta_min: pydantic.PositiveFloat = 2.0
     """Minimum beta parameter of the beta distribution."""
@@ -34,7 +34,7 @@ class SampleMagneticWellBetaCDFSettings(pydantic.BaseModel):
     """Maximum beta parameter of the beta distribution."""
 
     alpha_max: pydantic.PositiveFloat = 6.0
-    """Minimum alpha parameter of the beta distribution."""
+    """Maximum alpha parameter of the beta distribution."""
 
     mean_modb: float = 1.0  # Default at 1T
     """Mean value of the magnetic well."""
@@ -148,9 +148,9 @@ class SampleStellaratorSymmetricOmnigenousFieldSetting(pydantic.BaseModel):
     """Mean of the non-zero x_lmn coefficients.
 
     Non zero coefficients are entries of the
-    x_lmn array form the OmnigenousField class (See Eq 7 Dudt et al 2024) that allow for
-    stellarator symmetry: x_lmn[:, :, n_x_alpha_coefficients // 2 :] = 0  and
-    x_lmn[:, ::2, :] = 0
+    x_lmn array from the OmnigenousField class (see Eq. 7 of Dudt et al. 2024) that
+    allow for stellarator symmetry: x_lmn[:, :, n_x_alpha_coefficients // 2 :] = 0
+    and x_lmn[:, ::2, :] = 0
     """
 
     non_zero_xlmn_abs_cutoff: float = 1.2
@@ -267,7 +267,7 @@ class SampleOmnigenousFieldAndTargetsSettings(pydantic.BaseModel):
     n_field_periods: int | None = None
     """Number of field periods.
 
-    If not specified it will be sampled wiht settings defined in
+    If not specified it will be sampled with settings defined in
     omnigenous_field_settings.
     """
 
@@ -290,7 +290,7 @@ class SampleOmnigenousFieldAndTargetsSettings(pydantic.BaseModel):
 
     edge_rotational_transform_over_n_field_periods_max: float = 0.3
     """Maximum ratio between the edge rotational transform and the number of field
-    periods to sample from a uniform distribution.This will be ignored if
+    periods to sample from a uniform distribution. This will be ignored if
     edge_rotational_transform_over_n_field_periods is not None."""
 
     aspect_ratio: float | None = None

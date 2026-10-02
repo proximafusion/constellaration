@@ -108,9 +108,9 @@ class RandomWalkMetropolis:
     def _tune_scale_covariance(
         self, proposal_scale: float, accept_rate: float
     ) -> float:
-        r"""Tune the acceptance rate according to the last tuning interval. If higher
-        acceptance rate , means you need to expand your search field or increase
-        variance(its too small currently)
+        r"""Tune the acceptance rate according to the last tuning interval. If the
+        acceptance rate is higher, you need to expand your search field or increase
+        the variance (it's too small currently).
 
         The goal is an acceptance rate within 20\% - 50\%.
         The (acceptance) rate is adapted according to the following rule:

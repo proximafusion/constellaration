@@ -30,7 +30,8 @@ def optimize_with_mcmc(
     initial_stepsize: np.ndarray | None = None,
     **kwargs,
 ) -> np.ndarray:
-    """Optimizes a function using MCMC sampling."
+    """Optimizes a function using MCMC sampling.
+
     Args:
         function: For a given design variable, a function to compute a tuple of
             objectives and constraints. Constraint negative is considered as
@@ -68,13 +69,13 @@ def optimize_with_mcmc(
         # for the objective, quasi-likelihood
         beta = settings.beta  # can be a hyperparameter too. e.g. 1.0
         num_objectives = objectives.shape[0]
-        # The is just a basic form to deal with multi-objective optimization
+        # This is just a basic form to deal with multi-objective optimization
         w = 1 / num_objectives
         quasi_likelihood_obj = np.exp(-beta * np.sum(w * objectives))
 
         # for the constraints, indicator function
         if settings.smooth_constraints:
-            k = settings.k  # more the k, more steep the sigmoid. default 3
+            k = settings.k  # the larger k, the steeper the sigmoid. default 3
             sigma = (
                 settings.sigma
             )  # controls the degree of constraint violation allowed, def 0.01
@@ -83,7 +84,7 @@ def optimize_with_mcmc(
                 # sigmoid function
                 quasi_likelihood_cons_tmp = 1.0 / (
                     1.0 + np.exp(k * con)
-                )  # 1/(1+exp(-k(-x))) -x as we want 1 when constraoints satisfied
+                )  # 1/(1+exp(-k(-x))) -x as we want 1 when constraints satisfied
                 # else 0
                 # gaussian
                 quasi_likelihood_cons *= np.exp(
@@ -106,7 +107,7 @@ def optimize_with_mcmc(
 
     # Initialize the MCMC algorithm
     print(
-        "Running MCMC (Adaptive Random Walk Metrolopis Hastings)"
+        "Running MCMC (Adaptive Random Walk Metropolis-Hastings) "
         f"with {settings.num_samples} samples"
     )
     mcmc = mcmc_algo.RandomWalkMetropolis(target_logprob=_log_target)

@@ -23,7 +23,7 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
-  "pybind11<3.0.0", # Breaking change in 3.0.0 triggers an incompatibility with booz-xform on MAC https://github.com/hiddenSymmetries/booz_xform/pull/21
+  "pybind11<3.0.0", # Breaking change in 3.0.0 triggers an incompatibility with booz-xform on macOS https://github.com/hiddenSymmetries/booz_xform/pull/21
   "booz-xform==0.0.9",
   "datasets==3.5.1",
   "desc-opt==0.17.1",

@@ -273,7 +273,7 @@ def _compute_omnigenous_field_residuals(
     modB: jt.Float[np.ndarray, " n_collocation_points"],
     target_modB: jt.Float[np.ndarray, " n_collocation_points"],
 ) -> jt.Float[np.ndarray, " n_collocation_points"]:
-    # Scale both magnetic field strength such that the average is ~1T.
+    # Scale both magnetic field strengths such that the average is ~1T.
     scaled_modB = modB / np.mean(modB)
     scaled_target_modB = target_modB / np.mean(target_modB)
     return (scaled_modB - scaled_target_modB) / scaled_target_modB

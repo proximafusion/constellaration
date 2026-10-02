@@ -12,7 +12,8 @@ class OmnigenousFieldVmecOptimizationSettings(pydantic.BaseModel):
     """The maximum toroidal mode number of the resulting configuration."""
 
     n_inner_optimizations: int = 1
-    """The number of inner optimization to perform to obtain the final configuration."""
+    """The number of inner optimizations to perform to obtain the final
+    configuration."""
 
     gradient_free_budget_per_design_variable: int = 100
     """The budget for the gradient free optimization per design variable.

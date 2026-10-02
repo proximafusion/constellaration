@@ -110,7 +110,7 @@ def test_compute_magnetic_well_at_rho_eta_constant_rho(omnigenous_field_constant
     expected_shape = (3, 10)
     assert expected_shape == actual_B.shape
 
-    # All wells across values of rhos are different
+    # All wells across values of rhos are identical
     assert np.array_equal(actual_B[0, :], actual_B[1, :])
     assert np.array_equal(actual_B[1, :], actual_B[2, :])
     assert np.array_equal(actual_B[2, :], actual_B[3, :])
@@ -139,7 +139,7 @@ def test_compute_magnetic_well_at_rho_eta_varying_rho(omnigenous_field_varying_r
 def test_find_modb_from_theta_phi_boozer(stell_symmetric_omnigenous_field):
     field = stell_symmetric_omnigenous_field
     rho = 1.0
-    # Expected by running the forward function to get mob
+    # Expected by running the forward function to get modB
     expected_modb = omnigenity_field.get_modb_boozer(
         field, rho=rho, n_alpha=10, n_eta=10
     )

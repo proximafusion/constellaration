@@ -179,7 +179,7 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
 
 class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     """A problem to evaluate stellarator designs for ease of construction and deviation
-    from a Quasi-isodynamic (QI) field.
+    from a quasi-isodynamic (QI) field.
 
     Feasibility constraints:
         1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the
@@ -188,7 +188,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
             Rotational transform describes the winding of magnetic field lines around
             the plasma edge per field period.
         3. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in
-            terms of confinemetn of fusion-born energetic particles, neoclassical
+            terms of confinement of fusion-born energetic particles, neoclassical
             transport,
             and reduction of bootstrap current.
         4. Edge magnetic mirror ratio <= edge_magnetic_mirror_ratio_upper_bound.
@@ -274,7 +274,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
             The rotational transform describes the winding of magnetic field lines
             around the plasma edge per field period.
         2. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in
-            terms of confinemetn of fusion-born energetic particles, neoclassical
+            terms of confinement of fusion-born energetic particles, neoclassical
             transport, and reduction of bootstrap current.
         3. Edge magnetic mirror ratio <= edge_magnetic_mirror_ratio_upper_bound.
             Magnetic mirror ratio controls the variation in field strength at the
@@ -289,7 +289,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
     Scoring:
         * Computes the hypervolume of the feasible designs in the 2D space defined by
           the minimum normalized magnetic gradient scale length and aspect ratio.
-          Higher scores reward set of designs with larger hypervolume.
+          Higher scores reward sets of designs with larger hypervolume.
 
     Attributes:
         edge_rotational_transform_over_n_field_periods_lower_bound: Minimum

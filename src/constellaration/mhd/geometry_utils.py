@@ -12,7 +12,7 @@ def max_elongation(
     n_toroidal_points: int,
 ) -> float:
     """
-    Compute the maximum cross-sectional elongation of the outermost flux surface
+    Compute the maximum cross-sectional elongation of the outermost flux surface by:
 
     1) Computing the magnetic axis (R_axis, Z_axis) and its tangent at each toroidal
         angle.
@@ -183,7 +183,7 @@ def average_triangularity(
 
     where :math:`R_{max}` and :math:`R_{min}` are the maximum and minimum
     R in the toroidal cross-section, :math:`R0` is the location of the magnetic axis,
-    :math:`R_{Zmax}` and :math:`R_{Zmin}` are the R coordinate of the location of the
+    :math:`R_{Zmax}` and :math:`R_{Zmin}` are the R coordinates of the location of the
     maximum and minimum Z in the toroidal cross-section.
 
     The average triangularity is then computed by averaging the triangularity over the
@@ -236,7 +236,7 @@ def _get_polygon_area_from_vertices(
     is returned as the polygon's area.
 
     Args:
-        X, Y, Z: Arrays of length `n_points` containing the x, y, and z coordinates of\
+        X, Y, Z: Arrays of length `n_points` containing the x, y, and z coordinates of
             the polygon's vertices in 3D.  The polygon is assumed to be closed,
             so the point (X[i], Y[i], Z[i]) is connected to (X[i+1], Y[i+1], Z[i+1])
             for i = 0 to N-1, with the last vertex connecting back to the first.
