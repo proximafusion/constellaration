@@ -1,4 +1,4 @@
-import sys
+import importlib.metadata
 from typing import Any, cast
 
 import numpy as np
@@ -12,8 +12,17 @@ def _profile(lo: float, hi: float, n: int = 99) -> tuple[np.ndarray, np.ndarray]
     return lo + (hi - lo) * psi, psi
 
 
-def test_imports_without_spectre() -> None:
-    assert "spectre" not in sys.modules
+SPECTRE_COMMIT = "f96b2b541dc1aa48bd7d39e6ccaf30343c3da29e"
+
+
+def test_spectre_is_a_declared_dependency() -> None:
+    requirements = importlib.metadata.requires("constellaration") or []
+    pinned = "spectre@git+https://gitlab.com/spectre-eq/spectre.git@" + SPECTRE_COMMIT
+    assert any(r.replace(" ", "").startswith(pinned) for r in requirements)
+
+
+def test_no_optional_backend_error() -> None:
+    assert not hasattr(spectre, "SpectreNotAvailableError")
 
 
 @pytest.mark.parametrize(
@@ -264,20 +273,9 @@ def _equilibrium() -> vmec_utils.VmecppWOut:
     return cast(vmec_utils.VmecppWOut, _Equilibrium())
 
 
-def test_compute_spectre_metrics_screens_without_spectre() -> None:
+def test_compute_spectre_metrics_refuses_at_the_screen() -> None:
     m = spectre.compute_spectre_metrics(
         _equilibrium(), spectre_settings.SpectreSettings(max_poloidal_order=3)
     )
     assert m.refusal_class is spectre.RefusalClass.NO_RATIONAL
     assert m.severity == 0.0
-    assert "spectre" not in sys.modules
-
-
-def test_compute_spectre_metrics_needs_spectre_past_the_screen(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setitem(sys.modules, "spectre", None)  # makes `import spectre` fail
-    with pytest.raises(spectre.SpectreNotAvailableError):
-        spectre.compute_spectre_metrics(
-            _equilibrium(), spectre_settings.SpectreSettings()
-        )
