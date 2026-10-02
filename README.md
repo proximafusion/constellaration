@@ -83,6 +83,14 @@ pip install constellaration
   pip install .
   ```
 
+  **Note for macOS:** building `booz-xform` from source calls `python` from the `PATH`. If `python` does not resolve to the interpreter you are installing into (e.g. with a pyenv `system` global, where only `python3` exists), the build fails with `Could not find a package configuration file provided by "pybind11"`. Install into an activated virtual environment so that `python` points to it:
+
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
+  pip install .
+  ```
+
 ### Running with Docker
 
 If you prefer not to install system dependencies, you can use the provided Dockerfile to build a Docker image and run your scripts in a container.
