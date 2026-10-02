@@ -145,17 +145,53 @@ class SearchedChain(pydantic.BaseModel):
 class FieldIntegrityMetrics(pydantic.BaseModel):
     """The metrics row for one design."""
 
+    model_config = pydantic.ConfigDict(use_attribute_docstrings=True)
+
     severity: float | None
+    """The severity index M = N_fp |R_O R_X|^(1/4) / (m^2 |d iota/d psi_n|), summed over
+    the chains found at the crossings of the selected rational. Dimensionless; the
+    destroyed toroidal-flux fraction is ``predicted_flux_fraction(severity)``. 0.0 when
+    the screen finds no rational (``NO_RATIONAL``); None for every other refusal."""
+
     severity_poloidal_mode: int | None
+    """Poloidal mode number m of the rational the severity was built from (the number of
+    islands in the chain); None when no rational was selected."""
+
     n_chains_enumerated: int
+    """How many times VMEC's rotational transform crosses the selected rational, i.e.
+    the most chains the search can find; 0 when refused before the search."""
+
     n_chains_found: int
+    """How many of those chains the fixed-point search found (0 is
+    ``SEARCH_INCOMPLETE``)."""
+
     residue_o: float | None
+    """Greene residue R = (2 - trace J)/4 at the O-point of the leading chain (the chain
+    with the largest |R_O|), J the tangent map of one return; None if no chain."""
+
     residue_x: float | None
+    """Greene residue at the X-point of the leading chain; negative for a hyperbolic
+    point; None if no chain."""
+
     residue_ratio: float | None
+    """|R_X / R_O| of the leading chain: 1 for an ideal pendulum island."""
+
     pendulum_domain: bool
+    """True when |R_O| <= ``PENDULUM_MAX_RESIDUE`` and ``residue_ratio`` lies in
+    ``PENDULUM_RATIO_RANGE``: the island is close enough to a pendulum for the
+    severity-to-flux relation to hold. Outside it the severity is still served."""
+
     beltrami_residual: float | None
+    """Beltrami residual (largest volume-averaged error of curl B = mu B) of the field
+    the chains were searched in; None when no field was solved."""
+
     trust_pct: float | None
+    """Largest relative change of the severity, in percent, still expected from higher
+    resolution given ``beltrami_residual`` (``trust_envelope_pct``); None when the
+    residual is outside the measured bands."""
+
     refusal_class: RefusalClass
+    """Why ``severity`` is 0 or None; ``NONE`` when it was computed."""
 
 
 # ------------------------------------------------------------------------------------
