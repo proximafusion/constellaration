@@ -11,11 +11,9 @@ where ``equilibrium`` is the VMEC++ equilibrium the design was solved to (a
 ``vmec_utils.VmecppWOut``, as ``run_vmec`` returns it) and ``settings`` a
 ``SpectreSettings``.
 
-The pure-Python parts -- the resonance screen, the resolution-ladder controller
-and the reduction to metrics -- run without SPECTRE and are tested. The two steps
-that need a field (the Beltrami solve and the fixed-point search) import
-``spectre`` lazily and raise ``SpectreNotAvailableError`` when it is not
-installed.
+SPECTRE is a dependency of this package (pinned to a commit in ``pyproject.toml``).
+The resonance screen, the resolution-ladder controller and the reduction to
+metrics are pure Python; the Beltrami solve and the fixed-point search use it.
 
 The algorithm:
 
@@ -58,6 +56,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 import pydantic
+import spectre as spectre_backend
 
 from constellaration.mhd import vmec_utils
 from constellaration.mhd.spectre_settings import SpectreSettings
@@ -91,10 +90,6 @@ SEARCH_ESCALATION = 8.0
 
 N_LIB_ESCALATE = 1e5
 """Value of ``pi m / sqrt(R_O)`` above which that re-search is granted."""
-
-
-class SpectreNotAvailableError(ImportError):
-    """A step needs SPECTRE and the ``spectre`` package cannot be imported."""
 
 
 class RefusalClass(str, enum.Enum):
@@ -298,20 +293,6 @@ def ladder(
 # ------------------------------------------------------------------------------------
 
 
-def _require_spectre() -> Any:
-    try:
-        # The optional backend, absent from this repository's environments and from
-        # CI -- which is the case this function exists to handle.
-        import spectre  # pyright: ignore[reportMissingImports]
-    except ImportError as exc:  # pragma: no cover - depends on the environment
-        raise SpectreNotAvailableError(
-            "the field-integrity metrics need the SPECTRE package"
-            " (https://gitlab.com/spectre-eq/spectre), a Fortran source build with no"
-            " PyPI release."
-        ) from exc
-    return spectre
-
-
 def _solve_and_search(
     equilibrium: vmec_utils.VmecppWOut,
     settings: SpectreSettings,
@@ -322,13 +303,12 @@ def _solve_and_search(
     Returns the chains found, the Beltrami residual of the field they were found in,
     and whether the field diverged.
     """
-    spectre = _require_spectre()
     # Build the single-volume input from the equilibrium with the axis pinned, solve
     # at (mpol, ntor from the ladder), read the Beltrami residual, then search the
     # chain at iota = n/m with ``spectre.fixed_points``. The reference implementation
     # lives in the commissioning repository and is not part of this pull request; the
     # interface above it -- what goes in, what comes out -- is.
-    version = getattr(spectre, "__version__", "") or "(unknown version)"
+    version = getattr(spectre_backend, "__version__", "") or "(unknown version)"
     mpol = settings.poloidal_modes(resonance.m)
     raise NotImplementedError(
         f"SPECTRE {version} is installed, but the solve and search steps are not"
@@ -426,9 +406,7 @@ def compute_spectre_metrics(
 
     Screens the rotational transform, and where the screen names a chain, solves the
     field along the toroidal ladder and searches that chain. ``iotaf``, ``nfp``,
-    ``phi``, ``rmnc``/``zmns`` and the axis are read; nothing else. The screen runs
-    without SPECTRE, so a design refused there never reaches the import; the solve and
-    the search raise ``SpectreNotAvailableError`` when SPECTRE is absent.
+    ``phi``, ``rmnc``/``zmns`` and the axis are read; nothing else.
     """
     iota = np.asarray(equilibrium.iotaf, dtype=float)
     phi = np.asarray(equilibrium.phi, dtype=float)

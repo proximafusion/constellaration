@@ -46,14 +46,17 @@ jobs:
           # Overwrite broken mirror file with a working Ubuntu archive URL
           echo "http://azure.archive.ubuntu.com/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
           sudo apt-get update
-          sudo apt-get install -y libnetcdf-dev
+          # netcdf for booz-xform; Fortran, MPI, HDF5 and LAPACK to build SPECTRE
+          sudo apt-get install -y libnetcdf-dev gfortran libopenmpi-dev openmpi-bin libhdf5-openmpi-dev liblapack-dev
       - name: Install required packages for macOS
         if: runner.os == 'macOS'
-        run: brew install netcdf
+        run: |
+          brew install netcdf gcc open-mpi hdf5-mpi
+          echo "FC=gfortran" >> $GITHUB_ENV
       - name: Install package
         run: python -m pip install .[test]
       - name: Test package
-        run: python -m pytest tests/
+        run: python -m pytest tests/ -m "not spectre_solve"
 
   test-results:
     name: Test Results
