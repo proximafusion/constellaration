@@ -210,7 +210,7 @@ def binned_diversity_score(
         boundaries: Plasma boundaries (one per submitted configuration).
         aspect_ratios: Aspect ratio of each boundary (typically from the
             forward-model metrics).
-        lgradB_values: ``min_normalized_magnetic_gradient_scale_length``
+        lgradB_values: ``minimum_normalized_magnetic_gradient_scale_length``
             (already multiplied by ``n_field_periods``) for each boundary.
             Used to pick the top ``max_per_bin`` per bin.
         ar_min: Lower edge of the binning range.

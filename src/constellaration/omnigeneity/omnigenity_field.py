@@ -29,20 +29,20 @@ class OmnigenousField(pydantic_numpy.BaseModelWithNumpy):
     """The coefficients that parameterize the variation of the magnetic well shape on
     different field lines and flux surfaces.
 
-    See Eq. 2.7 of Dut et al. (2024).
+    See Eq. 2.7 of Dudt et al. (2024).
     """
 
     modB_spline_knot_coefficients: Float[
         np.ndarray, "n_modb_rho_coefficients n_modb_eta_spline_knots"
     ]
-    """The spline knots coefficients that parameterize the magnetic well strength
+    """The spline knot coefficients that parameterize the magnetic well strength
     evaluated at any rho between 0 and 1.
 
-    n_modb_rho_coefficients is the number of modes of a Chebyshev basis as Eq. 2.4 in
-    Dudt et al. (2024).
+    n_modb_rho_coefficients is the number of modes of a Chebyshev basis as in Eq. 2.4
+    of Dudt et al. (2024).
 
     .. math::
-        B_{well} = \\sum_{k=0}^{n_modB_rho_coefficients} modB_spline_knot_coefficients[k] \\dot T_k(\\eta)
+        B_{well} = \\sum_{k=0}^{n_modB_rho_coefficients} modB_spline_knot_coefficients[k] \\cdot T_k(\\eta)
         \\text{where } T_k(\\eta) = cos(k arccos(\\eta))
 
     The final magnetic well strength is given by a spline interpolation of the knot points
@@ -103,8 +103,8 @@ def get_theta_and_phi_boozer(
     Args:
         field: an omnigenous field
         rho: The radial coordinate to evaluate the Boozer coordinates
-        n_alpha: The number of points in a linearly spaced grid for the $\alpha$
-            coordiante
+        n_alpha: The number of points in a linearly spaced grid for the $\\alpha$
+            coordinate
         n_eta: The number of points in a linearly spaced grid for the $\\eta$ coordinate
         iota: The rotational transform
 
@@ -142,12 +142,12 @@ def get_modb_boozer(
     Args:
         field: an omnigenous field
         rho: The radial coordinate to evaluate the Boozer coordinates
-        n_alpha: The number of points in a linearly spaced grid for the $\alpha$
-            coordiante
+        n_alpha: The number of points in a linearly spaced grid for the $\\alpha$
+            coordinate
         n_eta: The number of points in a linearly spaced grid for the $\\eta$ coordinate
 
     Returns:
-        A 1D array of the Boozer coordinates of shape n_alpha * n_eta
+        A 1D array of the magnetic field strength of shape n_alpha * n_eta
     """
 
     eta = jnp.linspace(-jnp.pi / 2, jnp.pi / 2, n_eta, endpoint=False)
@@ -169,7 +169,7 @@ def find_modb_at_theta_phi_boozer(
     iota: float = 0.0,
 ) -> jnp.ndarray:
     """Finds the magnetic field strength from the Boozer coordinates $\\theta$ and
-    $\\phi$ by solving for $B$ in Eq. 7 from Dut et al. (2024).
+    $\\phi$ by solving for $B$ in Eq. 7 from Dudt et al. (2024).
 
     Args:
         field: an omnigenous field
@@ -206,8 +206,8 @@ def _compute_magnetic_well_at_rho_eta(
 ) -> Float[jnp.ndarray, "n_rho n_eta"]:
     """Computes the magnetic well strength for all values of $\\rho$ at the specified
     $\\eta$ values. The magnetic well strength is given by a spline interpolation of the
-    modB knot points. The knot points for an arbitrary rho are computed with a Chevyshev
-    series where the coefficients are in field.modB_spline_knots.
+    modB knot points. The knot points for an arbitrary rho are computed with a Chebyshev
+    series where the coefficients are in field.modB_spline_knot_coefficients.
 
     Args:
         field: an omnigenous field
@@ -220,7 +220,7 @@ def _compute_magnetic_well_at_rho_eta(
 
     n_rho = len(rho)
 
-    # Compute chebyshev basis
+    # Compute Chebyshev basis
     modes = jnp.arange(field.n_modb_rho_coefficients)[None, :]
     basis = jnp.cos(np.abs(modes) * jnp.arccos(2 * rho[:, None] - 1))
 
@@ -249,14 +249,13 @@ def _evaluate_h(
     alpha: jnp.ndarray = jnp.asarray([0.0]),
 ) -> Float[jnp.ndarray, "n_rho_points n_eta n_alpha"]:
     """Evaluates the h computational coordinate on a grid of rho, eta, and alpha points.
-    Following Eq. 7 of Dut et al. (2024) is used to compute h.
+    Eq. 7 of Dudt et al. (2024) is used to compute h.
 
     Args:
         field: an omnigenous field
-        rhos: An array of radial coordinates to evaluate h
-        n_eta: The number of points in a linearly spaced grid for the $\\eta$ coordinate
-        n_alpha: The number of point in a linearly spaced grid for the $\alpha$
-            coordiante
+        rho: An array of radial coordinates to evaluate h
+        eta: An array of $\\eta$ coordinates to evaluate h
+        alpha: An array of $\\alpha$ coordinates to evaluate h
     """
 
     eta3d = eta[None, None, :]
@@ -322,22 +321,23 @@ def _find_eta_from_h_rho_alpha(
     tol: float = 1e-10,
     max_iter: int = 100,
 ) -> jnp.ndarray:
-    """Finds the $\\eta$ coordinate from the h computational coordinat, $\\alpha$, and
-    $\\rho$ by solving for $\\eta$ in Eq. 7 from Dut et al. (2024). This is particularly
-    useful for identifying the magnetic field streth at specific boozer coordinates.
+    """Finds the $\\eta$ coordinate from the h computational coordinate, $\\alpha$, and
+    $\\rho$ by solving for $\\eta$ in Eq. 7 from Dudt et al. (2024). This is
+    particularly useful for identifying the magnetic field strength at specific Boozer
+    coordinates.
 
     Args:
         field: an omnigenous field
         rho: The radial coordinate to evaluate the Boozer coordinates
         alpha: The alpha coordinate to evaluate the Boozer coordinates
-        h: The h coordinate to evaluate the Boozer coordinates
+        h_target: The h coordinate to evaluate the Boozer coordinates
 
     Returns:
         A 2D array of the eta coordinates of shape (n_rho, n_alpha)
     """
 
     if len(rho) != len(alpha) and len(rho) != len(h_target):
-        raise ValueError("rho alpha and h must have the same length")
+        raise ValueError("rho, alpha and h must have the same length")
 
     def single_eta_solver(rho_val: Scalar, alpha_val: Scalar, h_val: Scalar) -> Scalar:
         """Finds the eta coordinate for a given rho, alpha, and h value."""

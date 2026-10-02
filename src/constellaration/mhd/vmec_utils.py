@@ -266,7 +266,7 @@ class VmecppWOut(vmecpp.VmecWOut):
     ) -> jt.Int[np.ndarray, " n_fourier_coefficients"]:
         """The toroidal mode numbers (n-values) corresponding to each Fourier mode.
 
-        Note that they including the factor `nfp`, i.e. for `mpol=4`, `ntor=1`, `nfp=5`:
+        Note that they include the factor `nfp`, i.e. for `mpol=4`, `ntor=1`, `nfp=5`:
         xn = [0, 5,-5, 0, 5,-5, 0, 5,-5, 0, 5]
         """
         return self.xn
@@ -345,7 +345,7 @@ def build_vmecpp_indata(
 
     # using default indata.am_aux_s and indata.am_aux_f
 
-    # indata.gamma and indata.spres_ped is left to its default value
+    # indata.gamma and indata.spres_ped are left to their default values
 
     # indata.piota_type is left to its default value
 
@@ -376,7 +376,7 @@ def build_vmecpp_indata(
 
     indata.delt = vmec_settings.time_step
 
-    # indata.{tcon0,lforbal} are left to its default value
+    # indata.{tcon0,lforbal} are left to their default values
 
     # indata.raxis_c and indata.zaxis_s are left to their default values so that we get
     # VMEC's initial guess for the magnetic axis
@@ -428,7 +428,7 @@ def magnetic_field_magnitude(
     equilibrium: VmecppWOut,
     s_theta_phi: jt.Float[np.ndarray, "n_s n_theta n_phi 3"],
 ) -> jt.Float[np.ndarray, " *dims"]:
-    """Computes the magnetic field magnitude on a set of of (s, theta, phi) points."""
+    """Computes the magnetic field magnitude on a set of (s, theta, phi) points."""
     magnetic_field_interpolator = _build_radial_interpolator(
         equilibrium=equilibrium,
         fourier_coefficients=equilibrium.bmnc.T[1:, :],

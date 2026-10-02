@@ -75,7 +75,7 @@ pip install constellaration
 
 2. Install the required system dependencies
    1. **On Ubuntu**: `sudo apt-get update && sudo apt-get install -y libnetcdf-dev`
-   2. **On MAC-OS**: `brew install netcdf`
+   2. **On macOS**: `brew install netcdf`
 
 3. Install the required Python dependencies:
 
@@ -126,7 +126,7 @@ pip install -e ".[test,lint]"
 
 We use **pre-commit** to automatically lint and format code before each commit. Linting is static code analysis that catches style issues and potential errors. If any **hook** fails, the commit will be blocked until you fix the reported issues and re-stage your changes.
 
- Install the hook (once per clone):
+Install the hook (once per clone):
 ```bash
 pip install pre-commit
 pre-commit install

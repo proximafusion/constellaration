@@ -231,7 +231,7 @@ def test_binned_diversity_score_drops_boundaries_outside_range() -> None:
     )
     # One non-empty bin out of ten -> score is positive but small.
     assert 0.0 < score < 1.0
-    # Score / n_bins must equal the within-bin distance / n_bins.
+    # Score must equal the within-bin distance / n_bins.
     # i.e. bin 0 distance = 10 * score.
     bin_distance = score * 10
     assert bin_distance > 0

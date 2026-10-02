@@ -41,7 +41,7 @@ class BoozerOutput(pydantic.BaseModel, arbitrary_types_allowed=True):
     """The number of Boozer poloidal modes."""
 
     max_boozer_toroidal_mode: int
-    """The number of Boozer toroidal modes."""
+    """The maximum Boozer toroidal mode number."""
 
     n_poloidal_modes: int
     """The number of poloidal modes."""
@@ -100,10 +100,10 @@ class BoozerOutput(pydantic.BaseModel, arbitrary_types_allowed=True):
     """The magnetic field strength sine Fourier coefficients in Boozer coordinates."""
 
     gmnc_b: FOURIER_COEFFICIENTS
-    """The equilibrium jacobian cosine Fourier coefficients in Boozer coordinates."""
+    """The equilibrium Jacobian cosine Fourier coefficients in Boozer coordinates."""
 
     gmns_b: FOURIER_COEFFICIENTS
-    """The equilibrium jacobian sine Fourier coefficients in Boozer coordinates."""
+    """The equilibrium Jacobian sine Fourier coefficients in Boozer coordinates."""
 
     rmnc_b: FOURIER_COEFFICIENTS
     """The equilibrium flux surfaces R coordinate cosine Fourier coefficients in Boozer
@@ -216,7 +216,7 @@ class BoozerSettings(pydantic.BaseModel):
     """
 
     verbose: bool = False
-    """If True, running booz_xform in verbose mode."""
+    """If True, runs booz_xform in verbose mode."""
 
 
 class BoozerPresetSettings(pydantic.BaseModel):
@@ -230,7 +230,7 @@ class BoozerPresetSettings(pydantic.BaseModel):
     """
 
     verbose: bool = False
-    """If True, running booz_xform in verbose mode."""
+    """If True, runs booz_xform in verbose mode."""
 
 
 def run_boozer(
@@ -305,10 +305,10 @@ def create_boozer_settings_from_equilibrium_resolution(
     mhd_equilibrium: vmec_utils.VmecppWOut,
     settings: BoozerPresetSettings,
 ) -> BoozerSettings:
-    """Derives Boozer transformation settings from the resolution of the equilibriumn
-    according to the given boozer settings preset.
+    """Derives Boozer transformation settings from the resolution of the equilibrium
+    according to the given Boozer settings preset.
 
-    See the wrapped function boozer.boozer_settings_from_equilibrium_resolution   for
+    See the wrapped function boozer.boozer_settings_from_equilibrium_resolution for
     more details.
     """
     return boozer_settings_from_equilibrium_resolution(
@@ -333,7 +333,7 @@ def boozer_settings_from_equilibrium_resolution(
         normalized_toroidal_flux: The normalized toroidal flux values at which the
             transformation to Boozer coordinates is performed. If None, the
             transformation to Boozer coordinates will be run on all flux surfaces.
-        verbose: If True, running booz_xform in verbose mode.
+        verbose: If True, runs booz_xform in verbose mode.
     """
     mpol = max(6 * mhd_equilibrium.mpol, 2)
     ntor = max(2 * mhd_equilibrium.ntor - 1, 0)
