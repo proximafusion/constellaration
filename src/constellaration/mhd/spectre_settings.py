@@ -1,6 +1,7 @@
 """Settings for the SPECTRE field-integrity metrics."""
 
 import math
+from typing import Literal
 
 import pydantic
 
@@ -32,13 +33,20 @@ class SpectreSettings(pydantic.BaseModel):
     residual below which M no longer moves with resolution on the measured population.
     The worst case can be wider; it is reported as ``trust_pct``.
     """
-    max_poloidal_order: int = pydantic.Field(default=40, ge=1)
-    """The screen's horizon m_max.
+    max_poloidal_order: int = pydantic.Field(default=20, ge=1)
+    """The screen's horizon m_max, inclusive: rationals with m <= m_max are solved.
 
     The lowest rational n/m (n a multiple of the field periods, m <= m_max) the
     rotational transform crosses is the chain that is solved for; a design that crosses
     none is served severity 0 without a solve. Sets which designs are solved at all,
     hence the cost of a dataset run.
+    """
+    chain_policy: Literal["lowest_order", "largest_severity"] = "lowest_order"
+    """Which crossed rational the severity is built from.
+
+    ``lowest_order``: the lowest-order rational alone (one solve). ``largest_severity``:
+    every crossed rational up to ``max_poloidal_order`` is solved and searched, and the
+    largest severity is served (one solve per rational).
     """
     n_volumes: int = pydantic.Field(default=1, ge=1)
     """Number of SPECTRE volumes. One volume is the vacuum field the metrics use."""

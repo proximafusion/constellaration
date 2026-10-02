@@ -109,6 +109,61 @@ def test_screen_sign_indefinite() -> None:
     assert res == []
 
 
+def test_screen_refuses_orders_above_20_by_default() -> None:
+    iota, psi = _profile(0.777, 0.788)  # its lowest admissible rational has m > 20
+    default = spectre.screen(iota, psi, 4, spectre_settings.SpectreSettings())
+    assert default[0] is spectre.RefusalClass.NO_RATIONAL
+    wide = spectre_settings.SpectreSettings(max_poloidal_order=40)
+    assert spectre.screen(iota, psi, 4, wide)[0] is spectre.RefusalClass.NONE
+
+
+def test_select_resonances_policies() -> None:
+    iota, psi = _profile(0.8676, 1.4284)
+    found = spectre.crossed_resonances(iota, psi, 3, 20)
+    assert spectre.select_resonances(found, "lowest_order") == found[:1]
+    assert spectre.select_resonances(found, "largest_severity") == found
+
+
+class _TwoChainEquilibrium:
+    """A transform crossing both 3/3 and 6/5 (walkthrough design M)."""
+
+    nfp = 3
+    n_field_periods = 3
+    phi = np.linspace(0.0, 0.03, 99)
+    iotaf = np.linspace(0.8676, 1.4284, 99)
+
+
+def _fake_solve_and_search(
+    _equilibrium: Any, _settings: Any, resonance: Any
+) -> tuple[list[spectre.SearchedChain], float | None, bool]:
+    residue = {(3, 3): 4.2e-4, (6, 5): 3.8e-2}.get((resonance.n, resonance.m))
+    if residue is None:
+        return [], 1e-3, False
+    chain = spectre.SearchedChain(
+        n=resonance.n,
+        m=resonance.m,
+        psi_n=0.5,
+        residue_o=residue,
+        residue_x=-residue,
+        shear=resonance.shear,
+    )
+    return [chain], 1e-3, False
+
+
+@pytest.mark.parametrize(
+    ("policy", "expected_m"), [("lowest_order", 3), ("largest_severity", 5)]
+)
+def test_chain_policy_picks_the_scored_rational(
+    monkeypatch: pytest.MonkeyPatch, policy: str, expected_m: int
+) -> None:
+    monkeypatch.setattr(spectre, "_solve_and_search", _fake_solve_and_search)
+    settings = spectre_settings.SpectreSettings(chain_policy=policy)  # type: ignore[arg-type]
+    equilibrium = cast(vmec_utils.VmecppWOut, _TwoChainEquilibrium())
+    m = spectre.compute_spectre_metrics(equilibrium, settings)
+    assert m.severity_poloidal_mode == expected_m
+    assert m.refusal_class is spectre.RefusalClass.NONE
+
+
 def test_screen_horizon_is_a_setting() -> None:
     iota, psi = _profile(0.777, 0.788)
     s = spectre_settings.SpectreSettings(max_poloidal_order=20)

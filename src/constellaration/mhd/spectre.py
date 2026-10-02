@@ -51,7 +51,7 @@ from __future__ import annotations
 import enum
 import math
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -262,17 +262,17 @@ def crossed_resonances(
 
 def select_resonances(
     candidates: Sequence[ScreenedResonance],
+    policy: Literal["lowest_order", "largest_severity"] = "lowest_order",
 ) -> list[ScreenedResonance]:
     """Which of the crossed rationals the severity is built from.
 
-    Today: the lowest order alone, on the premise that island width falls steeply with
-    poloidal order. That premise is not safe design-by-design -- a higher-order chain
-    in the same field can be the wider one -- so the choice lives here rather than
-    welded into the enumeration. Alternatives that need only this function to change:
-    the largest severity over the k lowest orders, every crossing below some order, or
-    the sum over distinct rationals. Which the dataset should serve is undecided; a
-    rule that needs tuning takes its knob on this function, not on the enumeration.
+    ``lowest_order`` keeps the lowest order alone, on the premise that island width
+    falls steeply with poloidal order. That premise is not safe design-by-design -- a
+    higher-order chain in the same field can be the wider one -- so
+    ``largest_severity`` keeps every candidate, and the reduction serves the largest.
     """
+    if policy == "largest_severity":
+        return list(candidates)
     return list(candidates[:1])
 
 
@@ -291,7 +291,7 @@ def screen(
     )
     if not candidates:
         return RefusalClass.NO_RATIONAL, []
-    return RefusalClass.NONE, select_resonances(candidates)
+    return RefusalClass.NONE, select_resonances(candidates, settings.chain_policy)
 
 
 # ------------------------------------------------------------------------------------
@@ -457,21 +457,25 @@ def compute_spectre_metrics(
             beltrami_residual=None,
             n_field_periods=n_field_periods,
         )
-    # ``select_resonances`` serves one rational today, and the reduction below scores
-    # that one. Serving several is the open question its docstring names.
-    resonance = resonances[0]
-    chains, beltrami_residual, diverged = _solve_and_search(
-        equilibrium, settings, resonance
-    )
-    if diverged:
-        refusal_class = RefusalClass.FIELD_DIVERGED
-    return _metrics_from(
-        refusal_class=refusal_class,
-        resonance=resonance,
-        chains=chains,
-        beltrami_residual=beltrami_residual,
-        n_field_periods=n_field_periods,
-    )
+    rows = []
+    for resonance in resonances:
+        chains, beltrami_residual, diverged = _solve_and_search(
+            equilibrium, settings, resonance
+        )
+        refusal = RefusalClass.FIELD_DIVERGED if diverged else refusal_class
+        rows.append(
+            _metrics_from(
+                refusal_class=refusal,
+                resonance=resonance,
+                chains=chains,
+                beltrami_residual=beltrami_residual,
+                n_field_periods=n_field_periods,
+            )
+        )
+    # One row per selected rational: serve the largest severity, or the lowest-order
+    # row when none was scored.
+    scored = [row for row in rows if row.severity is not None]
+    return max(scored, key=lambda row: row.severity or 0.0) if scored else rows[0]
 
 
 def predicted_flux_fraction(severity: float) -> float:

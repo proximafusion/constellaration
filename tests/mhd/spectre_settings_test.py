@@ -7,7 +7,8 @@ from constellaration.mhd import spectre_settings
 def test_defaults_are_the_commissioned_rule() -> None:
     s = spectre_settings.spectre_settings_metrics()
     assert s.tolerance_pct == 1.0
-    assert s.max_poloidal_order == 40
+    assert s.max_poloidal_order == 20  # m <= 20 solved
+    assert s.chain_policy == "lowest_order"
     assert s.poloidal_floor == 14
     assert s.toroidal_ladder == (14, 18, 22, 26)
     assert s.stop_residual == pytest.approx(0.02)
@@ -52,3 +53,8 @@ def test_round_trip() -> None:
         poincare=spectre_settings.PoincareSettings(n_trajectories=10),
     )
     assert spectre_settings.SpectreSettings.model_validate(s.model_dump()) == s
+
+
+def test_chain_policy_rejects_unknown_values() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        spectre_settings.SpectreSettings(chain_policy="sum")  # type: ignore[arg-type]
