@@ -300,7 +300,7 @@ def build_vmecpp_indata(
     if not boundary.is_stellarator_symmetric:
         raise NotImplementedError("Only stellarator symmetric surfaces are supported.")
 
-    indata = vmecpp.VmecInput.default()
+    indata = vmecpp.VmecInput()
 
     indata.lasym = not boundary.is_stellarator_symmetric
     indata.nfp = boundary.n_field_periods
