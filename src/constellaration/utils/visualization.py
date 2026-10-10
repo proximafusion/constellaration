@@ -12,7 +12,7 @@ from simsopt import mhd
 
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import surface_rz_fourier, surface_utils
-from constellaration.mhd import vmec_utils
+from constellaration.mhd import spectre, vmec_utils
 
 
 def plot_surface(
@@ -205,4 +205,158 @@ def plot_flux_surfaces(
     ax.set_ylabel("Z [m]")
     if title is not None:
         ax.set_title(title)
+    return fig
+
+
+def _flux_surfaces_rz(
+    equilibrium: vmec_utils.VmecppWOut,
+    normalized_toroidal_flux: np.ndarray,
+    phi: float,
+    n_theta: int = 256,
+) -> tuple[np.ndarray, np.ndarray]:
+    """R and Z of VMEC flux surfaces on one toroidal plane, as (surface, theta)."""
+    theta = np.linspace(0, 2 * np.pi, num=n_theta)
+    angle = equilibrium.xm[:, None] * theta[None, :] - equilibrium.xn[:, None] * phi
+    s_full_grid = equilibrium.normalized_toroidal_flux_full_grid_mesh
+    rmnc = interpolate.interp1d(s_full_grid, equilibrium.rmnc.T, axis=0)(
+        normalized_toroidal_flux
+    )
+    zmns = interpolate.interp1d(s_full_grid, equilibrium.zmns.T, axis=0)(
+        normalized_toroidal_flux
+    )
+    return rmnc @ np.cos(angle), zmns @ np.sin(angle)
+
+
+def plot_flux_surfaces_cross_section(
+    equilibrium: vmec_utils.VmecppWOut,
+    normalized_toroidal_angle: float = 0.5,
+    n_surfaces: int = 12,
+    figsize: tuple[float, float] = (5.0, 6.0),
+) -> mpl_figure.Figure:
+    """Plot the VMEC flux surfaces on one toroidal plane.
+
+    Args:
+        equilibrium: the equilibrium object containing the flux surface data.
+        normalized_toroidal_angle: the plane, in units of the field period. 0 and 0.5
+            are the two stellarator-symmetric planes.
+        n_surfaces: the number of flux surfaces, evenly spaced in toroidal flux.
+        figsize: the figure size.
+
+    Returns:
+        The figure with the flux surfaces plotted.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    phi = normalized_toroidal_angle * 2 * np.pi / equilibrium.nfp
+    surfaces = np.linspace(0, 1.0, n_surfaces + 1)
+    r, z = _flux_surfaces_rz(equilibrium, surfaces, phi)
+    ax.plot(r[1:].T, z[1:].T, c="tab:blue", lw=0.8)
+    ax.plot(r[0, 0], z[0, 0], "+", c="tab:blue")
+    ax.set_aspect("equal")
+    ax.set_xlabel("R [m]")
+    ax.set_ylabel("Z [m]")
+    ax.set_title(
+        r"VMEC flux surfaces at $\varphi="
+        + f"{normalized_toroidal_angle:g}"
+        + r"\,\frac{2\pi}{N_{fp}}$"
+    )
+    return fig
+
+
+def plot_rotational_transform(
+    equilibrium: vmec_utils.VmecppWOut,
+    crossings: list[spectre.ScreenedCrossing] | None = None,
+    spectre_profile: tuple[np.ndarray, np.ndarray] | None = None,
+    figsize: tuple[float, float] = (7.0, 4.0),
+) -> mpl_figure.Figure:
+    """Plot the rotational transform profile and the rationals it crosses.
+
+    Args:
+        equilibrium: the VMEC equilibrium.
+        crossings: crossings to mark, as the SPECTRE screen returns them. Each is
+            drawn as a line at its rational n/m and a marker at its crossing.
+        spectre_profile: normalised toroidal flux and rotational transform of the
+            field lines of a SPECTRE field, to compare with the VMEC profile.
+        figsize: the figure size.
+
+    Returns:
+        The figure with the rotational transform plotted.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    psi_n = equilibrium.normalized_toroidal_flux_full_grid_mesh
+    ax.plot(psi_n, np.abs(equilibrium.iotaf), c="tab:blue", label="VMEC")
+    if spectre_profile is not None:
+        ax.plot(*spectre_profile, ".", c="tab:red", ms=5, label="SPECTRE")
+    rationals = {(r.n, r.m) for r in crossings or []}
+    colors = mpl.colormaps["tab10"](np.linspace(0, 1, 10))
+    for color, (n, m) in zip(colors[2:], sorted(rationals, key=lambda nm: nm[::-1])):
+        ax.axhline(n / m, c=color, lw=0.8, ls="--", label=f"{n}/{m}")
+        positions = [r.psi_n for r in crossings or [] if (r.n, r.m) == (n, m)]
+        ax.plot(positions, [n / m] * len(positions), "o", c=color)
+    ax.set_xlabel("Normalized toroidal flux")
+    ax.set_ylabel(r"Rotational transform $|\iota|$")
+    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
+    return fig
+
+
+def plot_poincare_section(
+    equilibrium: vmec_utils.VmecppWOut,
+    field_lines: list[np.ndarray],
+    chain_points: list[tuple[np.ndarray, np.ndarray]] | None = None,
+    normalized_toroidal_angle: float = 0.5,
+    n_surfaces: int = 12,
+    figsize: tuple[float, float] = (6.0, 7.0),
+) -> mpl_figure.Figure:
+    """Plot VMEC flux surfaces against the Poincare section of a SPECTRE field.
+
+    On a stellarator-symmetric plane the section is up-down symmetric, so the two
+    are drawn in one frame: the VMEC flux surfaces in the upper half and the SPECTRE
+    punctures in the lower half. The two halves are different kinds of object: the
+    VMEC surfaces are nested by assumption, the punctures are traced field lines.
+
+    Args:
+        equilibrium: the VMEC equilibrium.
+        field_lines: (R, Z) punctures of each field line with the plane, one
+            ``(n, 2)`` array per field line.
+        chain_points: the O-points and X-points of island chains on that plane, as
+            two ``(m, 2)`` arrays of (R, Z) per chain; drawn in the lower half.
+        normalized_toroidal_angle: the plane, in units of the field period; 0 or 0.5.
+        n_surfaces: the number of VMEC flux surfaces.
+        figsize: the figure size.
+
+    Returns:
+        The figure with the two half sections plotted.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
+    phi = normalized_toroidal_angle * 2 * np.pi / equilibrium.nfp
+    surfaces = np.linspace(0, 1.0, n_surfaces + 1)
+    r, z = _flux_surfaces_rz(equilibrium, surfaces, phi)
+    upper = np.where(z >= 0, z, np.nan)
+    ax.plot(r[1:].T, upper[1:].T, c="tab:blue", lw=0.8)
+    ax.plot(r[-1], -upper[-1], c="k", lw=0.8)
+    for line in field_lines:
+        lower = line[line[:, 1] <= 0]
+        ax.plot(lower[:, 0], lower[:, 1], ".", c="k", ms=0.6)
+    for i, (o_points, x_points) in enumerate(chain_points or []):
+        for points, marker, label in (
+            (o_points, "o", "O-points"),
+            (x_points, "x", "X-points"),
+        ):
+            lower = points[points[:, 1] <= 1e-9]
+            ax.plot(
+                lower[:, 0],
+                lower[:, 1],
+                marker,
+                c="tab:red",
+                ms=6,
+                ls="none",
+                fillstyle="none",
+                label=label if i == 0 else None,
+            )
+    if chain_points:
+        ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
+    ax.axhline(0.0, c="gray", lw=0.5)
+    ax.set_aspect("equal")
+    ax.set_xlabel("R [m]")
+    ax.set_ylabel("Z [m]")
+    ax.set_title("VMEC flux surfaces (top), SPECTRE field lines (bottom)")
     return fig
