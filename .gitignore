@@ -175,3 +175,6 @@ cython_debug/
 
 # Presentation visualizations
 presentations/
+
+# Cached equilibrium and SPECTRE output of notebooks/spectre_field_integrity.ipynb
+notebooks/spectre_field_integrity_cache/

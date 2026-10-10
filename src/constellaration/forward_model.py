@@ -5,7 +5,10 @@ from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import radial_profile, surface_rz_fourier, surface_utils
 from constellaration.mhd import geometry_utils
 from constellaration.mhd import ideal_mhd_parameters as ideal_mhd_parameters_module
-from constellaration.mhd import magnetics_utils, turbulent_transport
+from constellaration.mhd import magnetics_utils
+from constellaration.mhd import spectre as spectre_module
+from constellaration.mhd import spectre_settings as spectre_settings_module
+from constellaration.mhd import turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
 from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
@@ -36,6 +39,8 @@ class ConstellarationMetrics(pydantic.BaseModel):
 
     flux_compression_in_regions_of_bad_curvature: float | None = None
 
+    field_integrity: spectre_module.FieldIntegrityMetrics | None = None
+
 
 class ConstellarationSettings(pydantic.BaseModel):
     vmec_preset_settings: vmec_settings_module.VmecPresetSettings = (
@@ -56,6 +61,7 @@ class ConstellarationSettings(pydantic.BaseModel):
         n_field_lines=101,
         n_toroidal_points=64,
     )
+    spectre_settings: spectre_settings_module.SpectreSettings | None = None
 
     @staticmethod
     def default_high_fidelity() -> "ConstellarationSettings":
@@ -209,6 +215,19 @@ def forward_model(
     else:
         flux_compression_in_regions_of_bad_curvature = None
 
+    # Field-integrity metrics
+    if settings.spectre_settings is not None:
+        spectre_output = spectre_module.run_spectre(
+            equilibrium=equilibrium,
+            settings=settings.spectre_settings,
+        )
+        field_integrity = spectre_module.compute_field_integrity_metrics(
+            output=spectre_output,
+            equilibrium=equilibrium,
+        )
+    else:
+        field_integrity = None
+
     metrics = ConstellarationMetrics(
         aspect_ratio=equilibrium.aspect,
         aspect_ratio_over_edge_rotational_transform=equilibrium.aspect
@@ -225,6 +244,7 @@ def forward_model(
         minimum_normalized_magnetic_gradient_scale_length=minimum_normalized_magnetic_gradient_scale_length,
         qi=qi_residuals,
         flux_compression_in_regions_of_bad_curvature=flux_compression_in_regions_of_bad_curvature,
+        field_integrity=field_integrity,
     )
 
     return metrics, equilibrium

@@ -8,27 +8,19 @@ def test_defaults_are_the_commissioned_rule() -> None:
     s = spectre_settings.spectre_settings_metrics()
     assert s.tolerance_pct == 1.0
     assert s.max_poloidal_order == 20  # m <= 20 solved
-    assert s.chain_policy == "lowest_order"
+    assert s.max_rationals == 3
     assert s.poloidal_floor == 14
     assert s.toroidal_ladder == (14, 18, 22, 26)
     assert s.stop_residual == pytest.approx(0.02)
-    assert s.poincare is None
     assert s.max_threads == 1
 
 
 @pytest.mark.parametrize(
-    ("m", "mpol", "lrad"),
-    [(2, 14, 18), (5, 14, 18), (9, 14, 18), (10, 15, 19), (13, 20, 24), (27, 41, 45)],
+    ("m", "mpol"),
+    [(2, 14), (5, 14), (9, 14), (10, 15), (13, 20), (27, 41)],
 )
-def test_resolution_rule(m: int, mpol: int, lrad: int) -> None:
-    s = spectre_settings.SpectreSettings()
-    assert s.poloidal_modes(m) == mpol
-    assert s.radial_modes(m) == lrad
-
-
-def test_radial_resolution_override() -> None:
-    s = spectre_settings.SpectreSettings(radial_resolution=30)
-    assert s.radial_modes(5) == 30
+def test_poloidal_resolution_rule(m: int, mpol: int) -> None:
+    assert spectre_settings.SpectreSettings().poloidal_modes(m) == mpol
 
 
 def test_stop_residual_follows_tolerance() -> None:
@@ -48,13 +40,16 @@ def test_validation_floors(kwargs: dict) -> None:
 
 
 def test_round_trip() -> None:
-    s = spectre_settings.SpectreSettings(
-        tolerance_pct=2.5,
-        poincare=spectre_settings.PoincareSettings(n_trajectories=10),
-    )
+    s = spectre_settings.SpectreSettings(tolerance_pct=2.5, max_rationals=2)
     assert spectre_settings.SpectreSettings.model_validate(s.model_dump()) == s
 
 
-def test_chain_policy_rejects_unknown_values() -> None:
+def test_max_rationals_is_at_least_one_or_unbounded() -> None:
+    assert spectre_settings.SpectreSettings(max_rationals=None).max_rationals is None
     with pytest.raises(pydantic.ValidationError):
-        spectre_settings.SpectreSettings(chain_policy="sum")  # type: ignore[arg-type]
+        spectre_settings.SpectreSettings(max_rationals=0)
+
+
+def test_only_one_volume_is_supported() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        spectre_settings.SpectreSettings(n_volumes=2)  # type: ignore[arg-type]
