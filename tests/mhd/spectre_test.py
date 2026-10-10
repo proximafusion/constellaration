@@ -270,7 +270,6 @@ def test_score_chains_single_chain_inside_the_domain() -> None:
         (4 / np.pi) * 3 * (3.465e-3**2) ** 0.25 / (25 * 0.2752)
     )
     assert chains[0].score == pytest.approx(0.0327, rel=1e-2)
-    assert chains[0].residue_ratio == pytest.approx(1.0)
 
 
 def test_score_chains_scores_each_chain_with_its_own_shear() -> None:
@@ -479,11 +478,6 @@ def test_score_never_exceeds_the_whole_flux() -> None:
     )
     assert sum(c.score for c in chains) > 1.0
     assert design_score == 1.0
-
-
-def test_residue_ratio_of_a_zero_o_residue() -> None:
-    chain = _chains(3.465e-3)[0].model_copy(update={"residue_o": 0.0})
-    assert chain.residue_ratio == float("inf")
 
 
 def test_predicted_flux_fraction() -> None:

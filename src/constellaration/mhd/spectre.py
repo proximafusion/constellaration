@@ -175,13 +175,6 @@ class SearchedChain(pydantic.BaseModel):
     several crossings it runs from the inner edge of the islands of the first
     crossing to the outer edge of those of the last."""
 
-    @property
-    def residue_ratio(self) -> float:
-        """|R_X / R_O|: 1 for an ideal pendulum island."""
-        if self.residue_o == 0.0:
-            return math.inf
-        return abs(self.residue_x / self.residue_o)
-
 
 class SpectreOutput(pydantic.BaseModel):
     """What ``run_spectre`` returns: the solved field and what it was solved for."""

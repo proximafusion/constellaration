@@ -285,7 +285,7 @@ def plot_rotational_transform(
     psi_n = equilibrium.normalized_toroidal_flux_full_grid_mesh
     ax.plot(psi_n, np.abs(equilibrium.iotaf), c="tab:blue", label="VMEC")
     if spectre_profile is not None:
-        ax.plot(*spectre_profile, ".", c="tab:red", ms=5, label="SPECTRE")
+        ax.plot(*spectre_profile, ".", c="tab:orange", ms=5, label="SPECTRE")
     rationals = {(r.n, r.m) for r in crossings or []}
     colors = mpl.colormaps["tab10"](np.linspace(0, 1, 10))
     for color, (n, m) in zip(colors[2:], sorted(rationals, key=lambda nm: nm[::-1])):
@@ -302,6 +302,7 @@ def plot_poincare_section(
     equilibrium: vmec_utils.VmecppWOut,
     field_lines: list[np.ndarray],
     chain_points: list[tuple[np.ndarray, np.ndarray]] | None = None,
+    chain_labels: list[str] | None = None,
     normalized_toroidal_angle: float = 0.5,
     n_surfaces: int = 12,
     figsize: tuple[float, float] = (6.0, 7.0),
@@ -318,7 +319,11 @@ def plot_poincare_section(
         field_lines: (R, Z) punctures of each field line with the plane, one
             ``(n, 2)`` array per field line.
         chain_points: the O-points and X-points of island chains on that plane, as
-            two ``(m, 2)`` arrays of (R, Z) per chain; drawn in the lower half.
+            two ``(m, 2)`` arrays of (R, Z) per chain; drawn in the lower half, one
+            colour per chain, in the colours ``plot_rotational_transform`` gives
+            the rationals.
+        chain_labels: the name of each chain in the legend, e.g. its rational
+            "6/5"; "chain 1", "chain 2"... when None.
         normalized_toroidal_angle: the plane, in units of the field period; 0 or 0.5.
         n_surfaces: the number of VMEC flux surfaces.
         figsize: the figure size.
@@ -336,8 +341,10 @@ def plot_poincare_section(
     for line in field_lines:
         lower = line[line[:, 1] <= 0]
         ax.plot(lower[:, 0], lower[:, 1], ".", c="k", ms=0.6)
+    colors = mpl.colormaps["tab10"](np.linspace(0, 1, 10))
     for i, (o_points, x_points) in enumerate(chain_points or []):
-        for points, marker, label in (
+        name = chain_labels[i] if chain_labels else f"chain {i + 1}"
+        for points, marker, kind in (
             (o_points, "o", "O-points"),
             (x_points, "x", "X-points"),
         ):
@@ -346,11 +353,11 @@ def plot_poincare_section(
                 lower[:, 0],
                 lower[:, 1],
                 marker,
-                c="tab:red",
+                color=colors[(2 + i) % 10],
                 ms=6,
                 ls="none",
                 fillstyle="none",
-                label=label if i == 0 else None,
+                label=f"{name} {kind}",
             )
     if chain_points:
         ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), frameon=False)
