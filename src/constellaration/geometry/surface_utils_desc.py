@@ -9,7 +9,7 @@ def from_desc_fourier_rz_toroidal_surface(
     surface: desc_geometry.FourierRZToroidalSurface,
 ) -> surface_rz_fourier.SurfaceRZFourier:
     r"""Converts a DESC FourierRZToroidalSurface (parameterized with coefficients of a
-    Double Fourier Series basis [1]) into a SurfaceRZFourier (Parameterized with Fourier
+    Double Fourier Series basis [1]) into a SurfaceRZFourier (parameterized with Fourier
     coefficients in cylindrical coordinates).
 
     Specifically, this function takes the **double-Fourier** representation
@@ -51,12 +51,11 @@ def from_desc_fourier_rz_toroidal_surface(
     Args:
         surface: A DESC FourierRZToroidalSurface object.
 
-    Returns
-
+    Returns:
         A SurfaceRZFourier object with the Fourier coefficients in cylindrical
             coordinates.
 
-    References
+    References:
     .. [1] `DESC Double-Fourier Series Documentation
        <https://desc-docs.readthedocs.io/en/stable/notebooks/basis_grid.html#Double-Fourier-Series>`_
     """  # noqa: E501
@@ -79,7 +78,7 @@ def from_desc_fourier_rz_toroidal_surface(
         m_1=poloidal_modes_r, n_1=toroidal_modes_r, x=r_array
     )
 
-    # cos_R, sin_R have shape => (1, num_modes)
+    # cos_r, sin_r have shape => (1, num_modes)
     rmnc = cos_r[0, :]  # cos expansions => "R_{m,n} cos(mθ - n(NFP)φ)"
     rmns = sin_r[0, :]  # sin expansions => "R_{m,n} sin(mθ - n(NFP)φ)"
 
@@ -156,17 +155,13 @@ def to_desc_fourier_rz_toroidal_surface(
     where :math:`m_k` and :math:`n_k` are the poloidal/toroidal integers stored in
     the DESC surface bases.
 
-
     Args:
         surface: A SurfaceRZFourier object.
 
-    Returns
-
+    Returns:
         A DESC FourierRZToroidalSurface object.
 
-
-    References
-
+    References:
     .. [1] `DESC Double-Fourier Series Documentation
        <https://desc-docs.readthedocs.io/en/stable/notebooks/basis_grid.html#Double-Fourier-Series>`_
     """  # noqa: E501
@@ -224,7 +219,7 @@ def from_qp_model(
     is_stellarator_symmetric: bool = True,
     is_iota_positive: bool = True,
 ) -> surface_rz_fourier.SurfaceRZFourier:
-    """Create a `SurfaceRZFourier` from section III (Goodman et al 2023) for
+    """Create a `SurfaceRZFourier` from section III (Goodman et al. 2023) for
     quasi-poloidal symmetry.
 
     This function wraps the `from_qp_model` method of a `FourierRZToroidalSurface`.
@@ -240,9 +235,9 @@ def from_qp_model(
             sin(2*phi).
         n_field_periods: Number of field periods.
         major_radius: Average major radius. Constant term in the R coordinate.
-                is_stellarator_symmetric: Whether to enforce stellarator symmetry.
+        is_stellarator_symmetric: Whether to enforce stellarator symmetry.
         is_iota_positive: Whether the rotational transform should be positive or
-        negative.
+            negative.
     """
     desc_surface = desc_geometry.FourierRZToroidalSurface.from_qp_model(
         major_radius=major_radius,  # type: ignore

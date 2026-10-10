@@ -540,7 +540,7 @@ class SpectralWidthTestCase:
 SPECTRAL_WIDTH_TEST_CASES: list[SpectralWidthTestCase] = [
     # toroidal curve (it has only m=0 coefficients)
     # For this curve, the spectral width should be 1 since the curve
-    # does not have any m>1 coefficient contributions.
+    # does not have any m>0 coefficient contributions.
     SpectralWidthTestCase(
         fourier_coefficients=[np.arange(1, 4, dtype=float).reshape(1, 3)],
         p=4,
@@ -960,7 +960,7 @@ def test_generate_stellarator_symmetric_augmentation_from_named_modes_example():
 def test_generate_stellarator_symmetric_augmentations_when_flipping_abs_n_is_1_coeffs(
     request, surface_fixture
 ):
-    """Equivalent to rotating toroidaly by pi/nfp."""
+    """Equivalent to rotating toroidally by pi/nfp."""
 
     # Get grid points for comparison
     surface = request.getfixturevalue(surface_fixture)

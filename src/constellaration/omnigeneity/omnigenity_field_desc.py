@@ -7,7 +7,7 @@ from constellaration.omnigeneity import omnigenity_field
 def omnigenous_field_from_desc(
     field_desc: desc_magnetic_fields.OmnigenousField,
 ) -> omnigenity_field.OmnigenousField:
-    """Convert a DESC omnigenous field into a omnigenity_field.OmnigenousField.
+    """Convert a DESC omnigenous field into an omnigenity_field.OmnigenousField.
 
     Args:
         field_desc: A DESC magnetic field object.
@@ -47,7 +47,7 @@ def omnigenous_field_from_desc(
 def omnigenous_field_to_desc(
     field: omnigenity_field.OmnigenousField,
 ) -> desc_magnetic_fields.OmnigenousField:
-    """Convert a omnigenity_field_types.OmnigenousField into a DESC omnigenous field.
+    """Convert an omnigenity_field.OmnigenousField into a DESC omnigenous field.
 
     Args:
         field: An omnigenous field object.

@@ -40,7 +40,7 @@ def energy_spectrum_scaling(
 
     The spectrum scaling is computed as:
 
-    ... math::
+    .. math::
 
         10^{-\sqrt{m^2 + n^2} / energy_scale}
 

@@ -40,7 +40,7 @@ def plot_surface(
     )
     points = surface_rz_fourier.evaluate_points_xyz(surface, theta_phi)
 
-    # Ensure points is a NumPy array with shape (n_phi, n_theta, 3)
+    # Ensure points is a NumPy array with shape (n_theta, n_phi, 3)
     points = np.array(points)
     x = points[..., 0]
     y = points[..., 1]

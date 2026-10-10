@@ -10,6 +10,42 @@
 The dataset is available on [Hugging Face](https://huggingface.co/datasets/proxima-fusion/constellaration).
 The repository contains a suite of tools and notebooks for exploring the dataset, including a forward model for plasma simulation, scoring functions for optimization evaluation and data-driven generative modeling.
 
+## Reproducibility and benchmark versions
+
+This repository is under active development: new metrics, problems and dependency updates (e.g. [VMEC++](https://github.com/proximafusion/vmecpp)) can change the values computed by the forward model and the scoring functions.
+To keep results comparable, the benchmark of [Cadena et al., NeurIPS 2025](https://openreview.net/forum?id=NQSbGKlCpx) is frozen to a tagged release.
+
+| Use case | Version |
+| --- | --- |
+| [ConStellaration leaderboard](https://huggingface.co/spaces/proxima-fusion/constellaration-bench) (geometrical, simple-to-build QI, MHD-stable QI problems) | [`v0.2.6`](https://github.com/proximafusion/constellaration/releases/tag/v0.2.6) |
+| Original NeurIPS 2025 paper experiments | [`0.2.1`](https://pypi.org/project/constellaration/0.2.1/) |
+| Latest development (not comparable to the leaderboard) | `main` / latest release |
+
+If you are working on the challenge or comparing against the leaderboard, install the benchmark version:
+
+```bash
+pip install constellaration==0.2.6
+```
+
+or, from source:
+
+```bash
+git clone --branch v0.2.6 https://github.com/proximafusion/constellaration.git
+cd constellaration
+pip install .
+```
+
+The leaderboard evaluates every submission with exactly this version, so scores computed locally with `constellaration==0.2.6` match the leaderboard.
+Newer releases may produce different metrics and scores and are not used by the leaderboard unless announced here.
+The PyPI version always equals the git tag of the release it was built from (`constellaration==X.Y.Z` ⇔ tag `vX.Y.Z`).
+
+Differences that affect benchmark scores:
+- **`0.2.1` → `0.2.6`:** the rotational transform constraint uses the absolute value of the edge rotational transform, so boundaries with negative iota are no longer penalized. Newer VMEC++ and other numerical dependencies cause only negligible numerical differences.
+- **`0.2.6` → `0.3.0`:** the flux compression in regions of bad curvature (a constraint of the MHD-stable problem) is computed with the field-aligned (PEST) Jacobian instead of the VMEC one ([#109](https://github.com/proximafusion/constellaration/pull/109)). This fixes a bug but changes MHD-stable feasibility, so `0.3.0` and later are not comparable to the leaderboard.
+
+> [!NOTE]
+> From 2026-10-02 to 2026-10-08 the leaderboard was briefly evaluated with `0.3.0`. The affected submissions have been re-evaluated with `0.2.6`.
+
 ## Installation
 
 The following instructions have been tested on **Ubuntu 22.04** and **Ubuntu 24.04**. Other platforms may require additional steps and have not been validated.
@@ -40,11 +76,19 @@ pip install constellaration
 
 2. Install the required system dependencies
    1. **On Ubuntu**: `sudo apt-get update && sudo apt-get install -y libnetcdf-dev`
-   2. **On MAC-OS**: `brew install netcdf`
+   2. **On macOS**: `brew install netcdf`
 
 3. Install the required Python dependencies:
 
   ```bash
+  pip install .
+  ```
+
+  **Note for macOS:** building `booz-xform` from source calls `python` from the `PATH`. If `python` does not resolve to the interpreter you are installing into (e.g. with a pyenv `system` global, where only `python3` exists), the build fails with `Could not find a package configuration file provided by "pybind11"`. Install into an activated virtual environment so that `python` points to it:
+
+  ```bash
+  python3 -m venv .venv
+  source .venv/bin/activate
   pip install .
   ```
 
@@ -83,7 +127,7 @@ pip install -e ".[test,lint]"
 
 We use **pre-commit** to automatically lint and format code before each commit. Linting is static code analysis that catches style issues and potential errors. If any **hook** fails, the commit will be blocked until you fix the reported issues and re-stage your changes.
 
- Install the hook (once per clone):
+Install the hook (once per clone):
 ```bash
 pip install pre-commit
 pre-commit install
