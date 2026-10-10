@@ -53,7 +53,8 @@ jobs:
       - name: Install required packages for macOS
         if: runner.os == 'macOS'
         run: |
-          brew install netcdf gcc open-mpi hdf5-mpi
+          # netcdf for booz-xform; it brings the HDF5 that SPECTRE is built against.
+          brew install netcdf gcc open-mpi
           echo "FC=gfortran" >> $GITHUB_ENV
       - name: Install package
         run: python -m pip install .[test]
