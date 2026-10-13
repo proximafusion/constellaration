@@ -29,7 +29,7 @@ dependencies = [
   "desc-opt==0.17.1",
   "ipython",
   "ipykernel",
-  "interpax==0.3.14",
+  "interpax==0.3.13",
   "jax<=0.10.0",
   "jaxtyping",
   "kaleido",
