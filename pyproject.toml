@@ -55,7 +55,7 @@ dependencies = [
   "scikit-learn==1.7.2",
   "simsopt==1.10.5",
   "seaborn==0.13.2",
-  "vmecpp>=0.7.0",
+  "vmecpp>=0.7.0,<1.0.0",
 ]
 
 [tool.hatch.metadata]
