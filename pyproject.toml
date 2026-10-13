@@ -53,9 +53,7 @@ dependencies = [
   "scikit-activeml==0.5.2",
   "scikit-build-core==0.10",
   "scikit-learn==1.7.2",
-  # Use newer simsopt for Python 3.13 compatibility
-  "simsopt==1.8.1; python_version < '3.13'",
-  "simsopt==1.10.5; python_version >= '3.13'",
+  "simsopt==1.10.5",
   "seaborn==0.13.2",
   "vmecpp>=0.7.0",
 ]
