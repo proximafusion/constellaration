@@ -24,12 +24,12 @@ classifiers = [
 ]
 dependencies = [
   "pybind11<3.0.0", # Breaking change in 3.0.0 triggers an incompatibility with booz-xform on macOS https://github.com/hiddenSymmetries/booz_xform/pull/21
-  "booz-xform==0.0.9",
+  "booz-xform==0.1.0",
   "datasets==3.5.1",
   "desc-opt==0.17.1",
   "ipython",
   "ipykernel",
-  "interpax==0.3.14",
+  "interpax==0.3.13",
   "jax<=0.10.0",
   "jaxtyping",
   "kaleido",
@@ -46,18 +46,16 @@ dependencies = [
   "orjson==3.10.16",
   "plotly<7.0.0",
   "pydantic",
-  "pymoo==0.6.1.5",
+  "pymoo==0.6.2",
   "pandas==2.2.3",
-  "qicna==0.3.4",
+  "qicna==0.3.6",
   "scipy",
   "scikit-activeml==0.5.2",
   "scikit-build-core==0.10",
-  "scikit-learn==1.5.2",
-  # Use newer simsopt for Python 3.13 compatibility
-  "simsopt==1.8.1; python_version < '3.13'",
-  "simsopt==1.9.0; python_version >= '3.13'",
+  "scikit-learn==1.7.2",
+  "simsopt==1.10.5",
   "seaborn==0.13.2",
-  "vmecpp==0.5.4",
+  "vmecpp>=0.7.0,<1.0.0",
 ]
 
 [tool.hatch.metadata]
