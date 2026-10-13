@@ -48,7 +48,7 @@ dependencies = [
   "pydantic",
   "pymoo==0.6.2",
   "pandas==2.2.3",
-  "qicna==0.3.4",
+  "qicna==0.3.6",
   "scipy",
   "scikit-activeml==0.5.2",
   "scikit-build-core==0.10",
