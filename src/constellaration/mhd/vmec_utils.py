@@ -218,6 +218,13 @@ class VmecppWOut(vmecpp.VmecWOut):
             assert "iota_half" not in data
             assert "iotas" in data
 
+            # Old wouts have no current-density coefficients. vmecpp would default
+            # them to empty 1D arrays, which it can neither re-validate nor save.
+            # They are missing data, not zero, hence NaN.
+            for field in ("currumnc", "currvmnc"):
+                if field not in data:
+                    data[field] = np.full((data["mnmax_nyq"], data["ns"]), np.nan)
+
         return data
 
     @property
