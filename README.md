@@ -149,6 +149,26 @@ pytest .
 
 The optimization baseline can be executed by running the individual files within the folder `optimization_examples`.
 
+## Additional metrics
+
+### SPECTRE field integrity
+
+VMEC assumes nested flux surfaces, so its equilibrium cannot show the magnetic islands a boundary hosts. `constellaration.mhd.spectre` re-solves the boundary with [SPECTRE](https://gitlab.com/spectre-eq/spectre), which does not make that assumption, and scores the island chains it finds:
+
+```python
+from constellaration.mhd import spectre, spectre_settings
+
+settings = spectre_settings.SpectreSettings()
+output = spectre.run_spectre(equilibrium, settings)
+metrics = spectre.compute_field_integrity_metrics(output, equilibrium)
+```
+
+`output` holds the complete SPECTRE HDF5 file, so the metrics can be recomputed from a stored field. `metrics.field_integrity_score` is the width of the island chains, as a fraction of the toroidal flux, summed over the lowest-order rationals the rotational transform crosses; `spectre.predicted_flux_fraction` turns it into the share of the toroidal flux the islands hold. The forward model computes the same metrics when `ConstellarationSettings.spectre_settings` is set; it is off by default.
+
+The notebook [`notebooks/spectre_field_integrity.ipynb`](notebooks/spectre_field_integrity.ipynb) goes from a boundary of the dataset to its metrics, and runs on a laptop.
+
+SPECTRE has no PyPI release: it is installed from source together with this package, which needs a Fortran compiler, CMake, MPI, HDF5 and OpenBLAS on the system (on Debian or Ubuntu: `gfortran cmake libopenmpi-dev libhdf5-openmpi-dev libopenblas-dev`). Use OpenBLAS rather than the reference LAPACK library, which stops SPECTRE's single-volume solve.
+
 ## Citation
 
 ```
