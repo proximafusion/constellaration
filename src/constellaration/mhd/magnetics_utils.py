@@ -1,8 +1,98 @@
 import jaxtyping as jt
 import numpy as np
+from scipy.special import logsumexp
 
 from constellaration.geometry import radial_profile, surface_utils
 from constellaration.mhd import vmec_utils
+
+
+def minimum_normalized_mercier_criterion(
+    equilibrium: vmec_utils.VmecppWOut, temperature: float
+) -> float | None:
+    r"""Conservative soft minimum of the normalized Mercier criterion.
+
+    For VMEC's interior full-grid values :math:`x_i=D_{\mathrm{Merc},i}
+    \Phi_{\mathrm{edge}}^2`, return :math:`-\tau\log\sum_i e^{-x_i/\tau}`,
+    where :math:`\tau` is ``temperature``. This is the log-mean-exp soft
+    minimum minus :math:`\tau\log n`; it is no greater than the smallest
+    sampled value. It excludes the axis and edge, and does not establish
+    stability between grid points. VMEC values near the axis may be unreliable.
+
+    Args:
+        equilibrium: VMEC equilibrium supplying DMerc and total toroidal flux.
+        temperature: Finite, strictly positive smoothing scale in normalized
+            Mercier units. Smaller values approximate the sampled minimum more
+            closely.
+
+    Returns:
+        The conservative soft minimum, or None if there are no interior samples
+        or any normalized interior value is nonfinite.
+    """
+    if not np.isfinite(temperature) or temperature <= 0:
+        raise ValueError("temperature must be finite and positive")
+    values = np.asarray(equilibrium.DMerc)[1:-1] * equilibrium.phi[-1] ** 2
+    if not len(values) or not np.all(np.isfinite(values)):
+        return None
+    return float(-temperature * logsumexp(-values / temperature))
+
+
+def mirror_ratio_well(axis: float, edge: float) -> float | None:
+    r"""Return the unsigned normalized difference of edge and axis mirror ratios.
+
+    The metric :math:`2|M_\mathrm{edge}-M_\mathrm{axis}|/
+    (M_\mathrm{edge}+M_\mathrm{axis})` favors radially flat mirror ratios.
+    This is motivated by the flat-mirror QI fields of Velasco et al.,
+    "Robust stellarator optimization via flat mirror magnetic fields" (2023),
+    https://doi.org/10.1088/1741-4326/acfe8a. This axis-to-edge measure is only
+    a max-J proxy, not a proof of max-J.
+
+    Args:
+        axis: Magnetic mirror ratio on the magnetic axis.
+        edge: Magnetic mirror ratio at the plasma edge.
+
+    Returns:
+        The dimensionless well, or None if the denominator is nonfinite or
+        no larger than 1e-14.
+    """
+    denominator = axis + edge
+    if not np.isfinite(denominator) or denominator <= 1e-14:
+        return None
+    return float(2 * abs(edge - axis) / denominator)
+
+
+def volume_averaged_beta(equilibrium: vmec_utils.VmecppWOut) -> float:
+    """Return VMEC's dimensionless volume-averaged beta, `betatotal`.
+
+    Args:
+        equilibrium: VMEC equilibrium supplying `betatotal`.
+
+    Returns:
+        VMEC's total beta as a fraction, not a percentage.
+    """
+    return float(equilibrium.betatotal)
+
+
+def beta_peaking_factor(equilibrium: vmec_utils.VmecppWOut) -> float | None:
+    r"""Return axis beta divided by VMEC's volume-averaged beta.
+
+    VMEC's ``beta_vol`` is a surface-averaged beta on a half grid with a
+    padding value at index zero. Following VMEC, axis beta is linearly
+    extrapolated as :math:`1.5\,\beta_1-0.5\,\beta_2` from the first two
+    physical half-grid values. This is beta peaking, not pressure peaking.
+
+    Args:
+        equilibrium: VMEC equilibrium supplying `beta_vol` and `betatotal`.
+
+    Returns:
+        The dimensionless ratio, or None for nonpositive or nonfinite total
+        beta, fewer than two physical half-grid values, or nonfinite axis beta.
+    """
+    beta = volume_averaged_beta(equilibrium)
+    profile = np.asarray(equilibrium.beta_vol)
+    if not np.isfinite(beta) or beta <= 0 or len(profile) < 3:
+        return None
+    axis = 1.5 * profile[1] - 0.5 * profile[2]
+    return float(axis / beta) if np.isfinite(axis) else None
 
 
 def vacuum_well(
