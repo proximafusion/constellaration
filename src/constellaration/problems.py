@@ -7,6 +7,7 @@ from pymoo.indicators import hv
 
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
+from constellaration.mhd import ideal_mhd_parameters_utils, pressure_profile
 
 _DEFAULT_RELATIVE_TOLERANCE = 1e-2
 
@@ -262,6 +263,217 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
             ]
         )
         return constraint_violations / np.abs(constraint_targets)
+
+
+class Design(pydantic.BaseModel):
+    """Boundary and optional pressure profile for equilibrium optimization.
+
+    With pressure=None, equilibria use the fixed profile p(s) = 1 Pa * (1 - s),
+    where s is normalized toroidal flux, zero toroidal current, and edge toroidal
+    flux pi * a**2 * 1 T, with a the boundary minor radius. This is a near-vacuum
+    approximation, not exactly zero pressure. Finite-beta problems require an
+    explicit pressure profile.
+    """
+
+    boundary: surface_rz_fourier.SurfaceRZFourier
+    pressure: pressure_profile.IntegratedBernsteinProfile | None = None
+
+
+class _FiniteBetaQIStellarator(SimpleToBuildQIStellarator):
+    """Shared QI and sampled-stability constraints for joint candidates."""
+
+    _max_elongation_upper_bound: pydantic.PositiveFloat = 7.0
+    _magnetic_mirror_ratio_well_upper_bound: pydantic.PositiveFloat = 0.05
+    _edge_rotational_transform_over_n_field_periods_lower_bound: (
+        pydantic.PositiveFloat
+    ) = 0.225
+
+    def _common_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[np.ndarray, float, float] | None:
+        """Return inherited QI constraints and the two stability violations."""
+        required = (
+            metrics.qi,
+            metrics.minimum_normalized_mercier_criterion,
+            metrics.magnetic_mirror_ratio_well,
+            metrics.volume_averaged_beta,
+        )
+        if any(value is None or not np.isfinite(value) for value in required):
+            return None
+        if metrics.qi < 0:
+            return None
+
+        # log10(0) represents perfect QI, but keep optimizer outputs finite.
+        legacy_metrics = metrics.model_copy(update={"qi": max(metrics.qi, 1e-300)})
+        legacy = super()._normalized_constraint_violations(legacy_metrics)
+        mercier = -metrics.minimum_normalized_mercier_criterion / 1e-3
+        mirror_well = (
+            metrics.magnetic_mirror_ratio_well
+            - self._magnetic_mirror_ratio_well_upper_bound
+        ) / self._magnetic_mirror_ratio_well_upper_bound
+        return legacy, mercier, mirror_well
+
+    def evaluate(self, design: Design) -> EvaluationSingleObjective:
+        if design.pressure is None:
+            raise ValueError("finite-beta problems require a design with pressure")
+        metrics, _ = forward_model.forward_model(
+            design.boundary,
+            ideal_mhd_parameters=ideal_mhd_parameters_utils.design_to_ideal_mhd_parameters(
+                design
+            ),
+            settings=forward_model.ConstellarationSettings.default_high_fidelity(),
+        )
+        objective, minimize = self.get_objective(metrics)
+        return EvaluationSingleObjective(
+            objective=objective,
+            minimize_objective=minimize,
+            feasibility=self.compute_feasibility(metrics),
+            score=self._score(metrics) if self.is_feasible(metrics) else 0.0,
+        )
+
+
+class MaximumBetaQIStellarator(_FiniteBetaQIStellarator):
+    """A problem to maximize volume-averaged beta for a QI stellarator.
+
+    Feasibility constraints:
+        1. Aspect ratio < 12.
+        2. Absolute edge rotational transform per field period >= 0.225.
+        3. QI residual <= 1e-4.
+        4. Edge magnetic mirror ratio <= 0.2.
+        5. Maximum elongation <= 7.
+        6. Conservative soft minimum of the normalized Mercier criterion > 0.
+        7. Magnetic mirror-ratio well < 0.05.
+
+    There is no minimum beta or beta-peaking constraint.
+    All bounds are enforced without a relative feasibility tolerance. Mercier
+    is evaluated on interior VMEC radial samples; mirror-ratio well is a max-J
+    proxy, not proof of max-J. Toroidal current is zero, and edge flux is
+    estimated for an approximately 1 T axis field.
+
+    Scoring:
+        * Maximizes VMEC's volume-averaged beta, expressed as a fraction.
+          The score is beta clipped to [0, 1] for feasible candidates and zero
+          for infeasible candidates.
+
+    Attributes:
+        aspect_ratio_upper_bound: Strict upper bound on aspect ratio.
+        edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
+            absolute edge rotational transform per field period.
+        log10_qi_upper_bound: Maximum log10 of the QI residual.
+        edge_magnetic_mirror_ratio_upper_bound: Maximum edge mirror ratio.
+        max_elongation_upper_bound: Maximum elongation.
+        magnetic_mirror_ratio_well_upper_bound: Strict upper bound on mirror well.
+    """
+
+    _aspect_ratio_upper_bound: pydantic.PositiveFloat = 12.0
+
+    @property
+    def n_constraints(self) -> int:
+        return 7
+
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
+        common = self._common_constraint_violations(metrics)
+        if common is None:
+            return np.full(self.n_constraints, np.inf)
+        legacy, mercier, mirror_well = common
+        violations = np.concatenate((legacy, [mercier, mirror_well]))
+        return np.where(np.isfinite(violations), violations, np.inf)
+
+    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
+        violations = self._normalized_constraint_violations(metrics)
+        aspect, _, _, _, _, mercier, mirror_well = violations
+        return bool(
+            np.all(violations <= 0)
+            and aspect < 0
+            and mercier < 0
+            and mirror_well < 0
+        )
+
+    def get_objective(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, bool]:
+        beta = metrics.volume_averaged_beta
+        return (float(beta) if beta is not None else float("nan"), False)
+
+    def _score(self, metrics: forward_model.ConstellarationMetrics) -> float:
+        assert metrics.volume_averaged_beta is not None
+        return _normalize_between_bounds(
+            value=metrics.volume_averaged_beta, lower_bound=0.0, upper_bound=1.0
+        )
+
+
+class SimpleToBuildFiniteBetaQIStellarator(_FiniteBetaQIStellarator):
+    """A problem to evaluate finite-beta QI stellarators for ease of construction.
+
+    Feasibility constraints:
+        1. Aspect ratio <= 5.
+        2. Absolute edge rotational transform per field period >= 0.225.
+        3. QI residual <= 1e-4.
+        4. Edge magnetic mirror ratio <= 0.2.
+        5. Maximum elongation <= 7.
+        6. Conservative soft minimum of the normalized Mercier criterion > 0.
+        7. Magnetic mirror-ratio well < 0.05.
+        8. VMEC volume-averaged beta >= 0.03.
+        9. Beta peaking in [2.9, 3.1], inclusive. Beta peaking is axis beta
+           divided by VMEC's volume-averaged beta.
+
+    All bounds are enforced without a relative feasibility tolerance. Mercier
+    is evaluated on interior VMEC radial samples; mirror-ratio well is a max-J
+    proxy, not proof of max-J. Toroidal current is zero, and edge flux is
+    estimated for an approximately 1 T axis field.
+
+    Scoring:
+        * Maximizes the minimum normalized magnetic gradient scale length at the
+          edge, as in SimpleToBuildQIStellarator. The score is the scale length
+          divided by 20 and clipped to [0, 1] for feasible candidates, and zero
+          for infeasible candidates.
+
+    Attributes:
+        aspect_ratio_upper_bound: Maximum aspect ratio.
+        edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
+            absolute edge rotational transform per field period.
+        log10_qi_upper_bound: Maximum log10 of the QI residual.
+        edge_magnetic_mirror_ratio_upper_bound: Maximum edge mirror ratio.
+        max_elongation_upper_bound: Maximum elongation.
+        magnetic_mirror_ratio_well_upper_bound: Strict upper bound on mirror well.
+    """
+
+    _aspect_ratio_upper_bound: pydantic.PositiveFloat = 5.0
+
+    @property
+    def n_constraints(self) -> int:
+        return 10
+
+    def _normalized_constraint_violations(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> np.ndarray:
+        common = self._common_constraint_violations(metrics)
+        peaking = metrics.beta_peaking_factor
+        if common is None or peaking is None or not np.isfinite(peaking):
+            return np.full(self.n_constraints, np.inf)
+        legacy, mercier, mirror_well = common
+        beta = metrics.volume_averaged_beta
+        assert beta is not None
+        violations = np.concatenate(
+            (
+                legacy,
+                [
+                    mercier,
+                    mirror_well,
+                    (0.03 - beta) / 0.03,
+                    (2.9 - peaking) / 3.0,
+                    (peaking - 3.1) / 3.0,
+                ],
+            )
+        )
+        return np.where(np.isfinite(violations), violations, np.inf)
+
+    def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
+        violations = self._normalized_constraint_violations(metrics)
+        _, _, _, _, _, mercier, mirror_well, _, _, _ = violations
+        return bool(np.all(violations <= 0) and mercier < 0 and mirror_well < 0)
 
 
 class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
