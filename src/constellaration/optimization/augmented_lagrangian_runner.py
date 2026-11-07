@@ -1,19 +1,20 @@
+import functools
 import multiprocessing
 import tempfile
 import time
+from collections.abc import Callable
 from concurrent import futures
-from typing import Callable
 
 import jax.numpy as jnp
 import nevergrad
 import numpy as np
 from nevergrad.parametrization import parameter as param
 
-import constellaration.forward_model as forward_model
 import constellaration.geometry.surface_rz_fourier as rz_fourier
 import constellaration.optimization.augmented_lagrangian as al
 import constellaration.optimization.settings as optimization_settings
-import constellaration.problems as problems
+from constellaration import forward_model, problems
+from constellaration.mhd import ideal_mhd_parameters_utils, pressure_profile
 from constellaration.utils import pytree
 
 pytree.register_pydantic_data(
@@ -24,23 +25,98 @@ pytree.register_pydantic_data(
 NAN_TO_HIGH_VALUE = 10.0
 
 
+pytree.register_pydantic_data(problems.Design)
+pytree.register_pydantic_data(pressure_profile.IntegratedBernsteinProfile)
+
+
+def _unravel_design(
+    x: jnp.ndarray,
+    unravel_log_design: Callable[[jnp.ndarray], problems.Design],
+    optimize_pressure: bool,
+) -> problems.Design:
+    """Restore physical axis pressure from the masked log-pressure coordinates."""
+    design = unravel_log_design(x)
+    if optimize_pressure and design.pressure is not None:
+        design = design.model_copy(
+            update={
+                "pressure": pressure_profile.IntegratedBernsteinProfile(
+                    axis_pressure=float(np.exp(design.pressure.axis_pressure)),
+                    gradient_logits=design.pressure.gradient_logits,
+                )
+            }
+        )
+    return design
+
+
+def _finite_beta_objective_constraints(
+    design: problems.Design,
+    problem: problems.MaximumBetaQIStellarator
+    | problems.SimpleToBuildFiniteBetaQIStellarator,
+    settings: forward_model.ConstellarationSettings,
+) -> tuple[
+    tuple[jnp.ndarray, jnp.ndarray], forward_model.ConstellarationMetrics | None
+]:
+    """Evaluate joint candidates using the problem's objective and constraints."""
+    assert design.pressure is not None
+    try:
+        metrics, _ = forward_model.forward_model(
+            boundary=design.boundary,
+            ideal_mhd_parameters=ideal_mhd_parameters_utils.design_to_ideal_mhd_parameters(
+                design
+            ),
+            settings=settings,
+        )
+        value, minimize = problem.get_objective(metrics)
+        constraints = problem._normalized_constraint_violations(metrics)
+        if not np.isfinite(value) or not np.all(np.isfinite(constraints)):
+            raise RuntimeError("required metric is missing or nonfinite")
+        return (
+            (jnp.array(value if minimize else -value), jnp.array(constraints)),
+            metrics,
+        )
+    except (RuntimeError, ValueError) as exc:
+        if isinstance(exc, ValueError) and str(exc) not in (
+            "Minimum of B is at the boundary.",
+            "Not enough crossings found.",
+        ):
+            raise
+        return (
+            (
+                jnp.array(NAN_TO_HIGH_VALUE),
+                jnp.full(problem.n_constraints, NAN_TO_HIGH_VALUE),
+            ),
+            None,
+        )
+
+
 def objective_constraints(
     x: jnp.ndarray,
     scale: jnp.ndarray,
     problem: problems.SingleObjectiveProblem | problems.MHDStableQIStellarator,
-    unravel_and_unmask_fn: Callable[[jnp.ndarray], rz_fourier.SurfaceRZFourier],
+    unravel_and_unmask_fn: Callable[[jnp.ndarray], problems.Design],
     settings: forward_model.ConstellarationSettings,
     aspect_ratio_upper_bound: float | None,
 ) -> tuple[
     tuple[jnp.ndarray, jnp.ndarray], forward_model.ConstellarationMetrics | None
 ]:
     with tempfile.TemporaryDirectory() as _:
-        boundary = unravel_and_unmask_fn(jnp.asarray(x * scale))
+        design = unravel_and_unmask_fn(jnp.asarray(x * scale))
+        if isinstance(
+            problem,
+            (
+                problems.MaximumBetaQIStellarator,
+                problems.SimpleToBuildFiniteBetaQIStellarator,
+            ),
+        ):
+            return _finite_beta_objective_constraints(design, problem, settings)
 
         metrics = None
         try:
             metrics, _ = forward_model.forward_model(
-                boundary=boundary,
+                boundary=design.boundary,
+                ideal_mhd_parameters=ideal_mhd_parameters_utils.design_to_ideal_mhd_parameters(
+                    design
+                ),
                 settings=settings,
             )
         except Exception as _:
@@ -117,30 +193,56 @@ def objective_constraints(
 
 
 def run(
-    boundary: rz_fourier.SurfaceRZFourier,
+    design: problems.Design,
     settings: optimization_settings.OptimizationSettings,
     problem: problems.MHDStableQIStellarator | problems.SingleObjectiveProblem,
     aspect_ratio_upper_bound: float | None = None,
-):
+) -> tuple[problems.Design, forward_model.ConstellarationMetrics | None]:
     """Run optimization using the Augmented Lagrangian method.
 
     Args:
-        boundary: The initial surface configuration.
+        design: The initial boundary and optional pressure. Finite-beta problems
+            optimize log-axis pressure and gradient logits alongside the masked
+            Fourier coefficients. Other problems keep supplied pressure fixed.
+            With pressure=None, pressure has no optimization DOFs: equilibria use
+            p(s) = 1 Pa * (1 - s), zero toroidal current, and edge toroidal flux
+            pi * a**2 * 1 T, where s is normalized toroidal flux and a is the
+            candidate boundary's minor radius. This is a near-vacuum approximation,
+            not exactly zero pressure; finite-beta problems require explicit pressure.
+            Pressure coordinate scales are set by settings.log_axis_pressure_scaling
+            and settings.pressure_gradient_logits_scaling (both default to 1).
         settings: Optimization settings including AL method parameters.
         problem: The problem to solve, either MHDStableQIStellarator or
             SingleObjectiveProblem.
         aspect_ratio_upper_bound: Optional upper bound for the aspect ratio constraint.
 
     Returns:
-        The optimized surface configuration and optimization metrics.
+        The final recommended design and its metrics (None on
+        evaluation failure). This does not certify feasibility; use the problem's
+        is_feasible method on the returned metrics.
     """
 
     assert isinstance(
         settings.optimizer_settings,
         optimization_settings.AugmentedLagrangianMethodSettings,
     )
+    finite_beta = isinstance(
+        problem,
+        (
+            problems.MaximumBetaQIStellarator,
+            problems.SimpleToBuildFiniteBetaQIStellarator,
+        ),
+    )
+    if finite_beta and design.pressure is None:
+        raise ValueError("finite-beta problems require a design with pressure")
+    if finite_beta and (
+        settings.forward_model_settings.qi_settings is None
+        or settings.forward_model_settings.boozer_preset_settings is None
+    ):
+        raise ValueError("QI and Boozer settings are required")
+
     boundary = rz_fourier.set_max_mode_numbers(
-        surface=boundary,
+        surface=design.boundary,
         max_poloidal_mode=settings.max_poloidal_mode,
         max_toroidal_mode=settings.max_toroidal_mode,
     )
@@ -149,12 +251,7 @@ def run(
         boundary,
         max_poloidal_mode=settings.max_poloidal_mode,
         max_toroidal_mode=settings.max_toroidal_mode,
-    )
-
-    initial_guess, unravel_and_unmask_fn = pytree.mask_and_ravel(
-        pytree=boundary,
-        mask=mask,
-    )
+    ).model_copy(update={"r_sin": None, "z_cos": None})
 
     scale = rz_fourier.compute_infinity_norm_spectrum_scaling_fun(
         poloidal_modes=boundary.poloidal_modes.flatten(),
@@ -162,10 +259,47 @@ def run(
         alpha=settings.infinity_norm_spectrum_scaling,
     ).reshape(boundary.poloidal_modes.shape)
     scale = jnp.array(np.concatenate([scale[mask.r_cos], scale[mask.z_sin]]))
-
+    pressure = design.pressure
+    pressure_mask = None
+    if pressure is not None:
+        if finite_beta:
+            # Only this internal pytree stores log(p0) in the axis-pressure field.
+            pressure = pressure.model_copy(
+                update={"axis_pressure": float(np.log(pressure.axis_pressure))}
+            )
+            scale = jnp.concatenate(
+                (
+                    scale,
+                    jnp.array(
+                        [
+                            settings.log_axis_pressure_scaling,
+                            *(
+                                [settings.pressure_gradient_logits_scaling]
+                                * len(pressure.gradient_logits)
+                            ),
+                        ]
+                    ),
+                )
+            )
+        pressure_mask = pressure.model_copy(
+            update={
+                "axis_pressure": float(finite_beta),
+                "gradient_logits": (float(finite_beta),)
+                * len(pressure.gradient_logits),
+            }
+        )
+    initial_guess, unravel_log_design = pytree.mask_and_ravel(
+        pytree=problems.Design.model_construct(boundary=boundary, pressure=pressure),
+        mask=problems.Design.model_construct(boundary=mask, pressure=pressure_mask),
+    )
+    unravel_and_unmask_fn = functools.partial(
+        _unravel_design,
+        unravel_log_design=unravel_log_design,
+        optimize_pressure=finite_beta,
+    )
     x0 = jnp.array(initial_guess) / scale
 
-    (objective, constraints), _ = objective_constraints(
+    (objective, constraints), metrics = objective_constraints(
         x0,
         scale,
         problem,
@@ -271,7 +405,7 @@ def run(
             recommendation = oracle.provide_recommendation()
             x = recommendation.value
 
-        (objective, constraints), _ = objective_constraints(
+        (objective, constraints), metrics = objective_constraints(
             x,
             scale,
             problem,
@@ -296,6 +430,8 @@ def run(
         )
 
         _logging(k + 1, n_function_evals, state)
+
+    return unravel_and_unmask_fn(state.x * scale), metrics
 
 
 def _logging(k: int, n_function_evals: int, state: al.AugmentedLagrangianState):

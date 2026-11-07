@@ -80,8 +80,13 @@ def pydantic_unflatten(
     return cls.model_construct(**kwargs)
 
 
+_REGISTERED_META_FIELDS: dict[type, tuple[str, ...]] = {}
+
+
 def register_pydantic_data(cls: type, meta_fields: list[str] | None = None) -> type:
     """Register a pydantic.BaseModel class for jax pytree compatibility.
+
+    Repeated registration with the same metadata is safe across importing modules.
 
     Args:
         cls: The pydantic.BaseModel class to register.
@@ -91,11 +96,20 @@ def register_pydantic_data(cls: type, meta_fields: list[str] | None = None) -> t
     Returns:
         The registered class, to enable the function to be used as a decorator.
     """
+    metadata = tuple(meta_fields or ())
+    if cls in _REGISTERED_META_FIELDS:
+        if _REGISTERED_META_FIELDS[cls] != metadata:
+            raise ValueError(
+                f"{cls.__name__} is already registered with different metadata"
+            )
+        return cls
+
     jtu.register_pytree_with_keys(
         cls,
         lambda x: pydantic_flatten(x, meta_fields),
         pydantic_unflatten,
     )
+    _REGISTERED_META_FIELDS[cls] = metadata
 
     return cls
 
