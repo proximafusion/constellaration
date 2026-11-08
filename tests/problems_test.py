@@ -1,4 +1,13 @@
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
 from constellaration import forward_model, problems
+from constellaration.geometry import surface_rz_fourier
+from constellaration.optimization import (
+    augmented_lagrangian_runner,
+    scipy_minimize_runner,
+)
 
 
 def test_geometrical_problem_is_feasible() -> None:
@@ -154,3 +163,55 @@ def _get_test_metrics() -> forward_model.ConstellarationMetrics:
         vacuum_well=0.1,
         minimum_normalized_magnetic_gradient_scale_length=0.5,
     )
+
+
+@pytest.mark.parametrize(
+    ("problem", "iota_idx", "bound"),
+    [
+        (problems.GeometricalProblem(), 2, 0.3),
+        (problems.SimpleToBuildQIStellarator(), 1, 0.25),
+        (problems.MHDStableQIStellarator(), 1, 0.25),
+    ],
+)
+@pytest.mark.parametrize("magnitude_factor", [0.5, 1.0, 1.5])
+def test_optimizer_iota_constraints(
+    monkeypatch: pytest.MonkeyPatch,
+    problem: problems.SingleObjectiveProblem | problems.MHDStableQIStellarator,
+    iota_idx: int,
+    bound: float,
+    magnitude_factor: float,
+) -> None:
+    boundary = surface_rz_fourier.SurfaceRZFourier(
+        r_cos=np.array([[1.0], [0.3]]), z_sin=np.array([[0.0], [0.3]])
+    )
+    settings = forward_model.ConstellarationSettings()
+    expected = bound * (1.0 - magnitude_factor)
+    for sign in (-1, 1):
+        metrics = _get_test_metrics().model_copy(
+            update={
+                "edge_rotational_transform_over_n_field_periods": (
+                    sign * bound * magnitude_factor
+                )
+            }
+        )
+        constraints = scipy_minimize_runner.constraints_fun(
+            x=jnp.zeros(1),
+            forward_model=lambda _: metrics,
+            problem=problem,
+            aspect_ratio_upper_bound=6.0,
+        )
+        assert float(constraints[iota_idx]) == pytest.approx(expected, abs=1e-7)
+
+        def evaluate_metrics(boundary, settings):  # noqa: ARG001
+            return metrics, None
+
+        monkeypatch.setattr(forward_model, "forward_model", evaluate_metrics)
+        (_, constraints), _ = augmented_lagrangian_runner.objective_constraints(
+            x=jnp.zeros(1),
+            scale=jnp.ones(1),
+            problem=problem,
+            unravel_and_unmask_fn=lambda _: boundary,
+            settings=settings,
+            aspect_ratio_upper_bound=6.0,
+        )
+        assert float(constraints[iota_idx]) == pytest.approx(expected, abs=1e-7)
