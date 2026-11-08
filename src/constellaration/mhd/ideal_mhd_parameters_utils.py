@@ -1,12 +1,55 @@
 """Utilities for ideal-magnetohydrodynamic (MHD) parameters."""
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 from scipy import constants as scipy_constants
 
 from constellaration.geometry import surface_rz_fourier
-from constellaration.mhd import flux_power_series, ideal_mhd_parameters
+from constellaration.mhd import (
+    flux_power_series,
+    ideal_mhd_parameters,
+    pressure_profile,
+    vmec_utils,
+)
 from constellaration.mhd import vmec_settings as vmec_settings_module
-from constellaration.mhd import vmec_utils
+
+if TYPE_CHECKING:
+    from constellaration import problems
+
+
+def design_to_ideal_mhd_parameters(
+    design: "problems.Design",
+) -> ideal_mhd_parameters.IdealMHDParameters:
+    r"""Construct zero-current inputs with an approximate 1 T axis field.
+
+    With pressure=None, use the fixed profile p(s) = 1 Pa * (1 - s) and
+    edge flux pi * a**2 * 1 T, with a the boundary minor radius.
+
+    For an explicit pressure profile, estimate the edge flux from :math:`\Phi=\pi a^2 [B_0 +
+    \mu_0(p_0-\bar p)/B_0]`, with :math:`B_0=1\,\mathrm{T}` and :math:`a`
+    the boundary minor radius. This is the first-order pressure correction to
+    cylindrical force balance :math:`B(s)^2+2\mu_0p(s)=B_0^2+2\mu_0p_0`,
+    treating uniform-s pressure averaging as an area average. It is a heuristic,
+    not a guarantee of VMEC's axis field in a shaped 3-D equilibrium.
+    """
+    if design.pressure is None:
+        return ideal_mhd_parameters.boundary_to_ideal_mhd_parameters(design.boundary)
+    pressure = pressure_profile.to_power_series(design.pressure)
+    mean_pressure = flux_power_series.evaluate_volume_average(pressure)
+    minor_radius = surface_rz_fourier.evaluate_minor_radius(design.boundary)
+    target_field = 1.0  # tesla
+    mean_field = (
+        target_field
+        + scipy_constants.mu_0
+        * (design.pressure.axis_pressure - mean_pressure)
+        / target_field
+    )
+    return ideal_mhd_parameters.IdealMHDParameters(
+        pressure=pressure,
+        toroidal_current=flux_power_series.FluxPowerSeriesProfile(coefficients=[0.0]),
+        boundary_toroidal_flux=float(np.pi * minor_radius**2 * mean_field),
+    )
 
 
 def get_ideal_mhd_parameters_for_volume_averaged_beta(

@@ -91,6 +91,7 @@ extra-dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py"]
 
 [tool.hatch.build]
 packages = ["src/constellaration"]
