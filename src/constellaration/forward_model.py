@@ -3,11 +3,14 @@ import pydantic
 
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import radial_profile, surface_rz_fourier, surface_utils
-from constellaration.mhd import geometry_utils
+from constellaration.mhd import (
+    geometry_utils,
+    magnetics_utils,
+    turbulent_transport,
+    vmec_utils,
+)
 from constellaration.mhd import ideal_mhd_parameters as ideal_mhd_parameters_module
-from constellaration.mhd import magnetics_utils, turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
-from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
 
 
@@ -32,12 +35,20 @@ class ConstellarationMetrics(pydantic.BaseModel):
 
     minimum_normalized_magnetic_gradient_scale_length: float
 
+    minimum_normalized_mercier_criterion: float | None = None
+    magnetic_mirror_ratio_well: float | None = None
+    volume_averaged_beta: float | None = None
+    beta_peaking_factor: float | None = None
+
     qi: float | None = None
 
     flux_compression_in_regions_of_bad_curvature: float | None = None
 
 
 class ConstellarationSettings(pydantic.BaseModel):
+    mercier_softmin_temperature: float = pydantic.Field(
+        default=1e-3, gt=0, allow_inf_nan=False
+    )
     vmec_preset_settings: vmec_settings_module.VmecPresetSettings = (
         vmec_settings_module.VmecPresetSettings(
             fidelity="low_fidelity",
@@ -210,6 +221,14 @@ def forward_model(
         flux_compression_in_regions_of_bad_curvature = None
 
     metrics = ConstellarationMetrics(
+        minimum_normalized_mercier_criterion=magnetics_utils.minimum_normalized_mercier_criterion(
+            equilibrium, settings.mercier_softmin_temperature
+        ),
+        magnetic_mirror_ratio_well=magnetics_utils.mirror_ratio_well(
+            axis_magnetic_mirror_ratio, edge_magnetic_mirror_ratio
+        ),
+        volume_averaged_beta=magnetics_utils.volume_averaged_beta(equilibrium),
+        beta_peaking_factor=magnetics_utils.beta_peaking_factor(equilibrium),
         aspect_ratio=equilibrium.aspect,
         aspect_ratio_over_edge_rotational_transform=equilibrium.aspect
         / edge_rotational_transform,
