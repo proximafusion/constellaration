@@ -45,12 +45,6 @@ class OmnigenousFieldVmecOptimizationMetrics(pydantic_numpy.BaseModelWithNumpy):
     line and its value at phi=0."""
 
 
-pytree.register_pydantic_data(
-    surface_rz_fourier.SurfaceRZFourier,
-    meta_fields=["n_field_periods", "is_stellarator_symmetric"],
-)
-
-
 def optimize_boundary_omnigenity_vmec(
     targets: omnigenity_field_sampling.OmnigenousFieldAndTargets,
     settings: vmec_optimization_settings.OmnigenousFieldVmecOptimizationSettings,
