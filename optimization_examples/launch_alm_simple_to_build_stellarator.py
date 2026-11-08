@@ -51,7 +51,7 @@ def main():
         max_poloidal_mode=1,
         max_toroidal_mode=1,
     )
-    runner.run(boundary, OPTIMIZATION_SETTINGS, problem)
+    runner.run(problems.Design(boundary=boundary), OPTIMIZATION_SETTINGS, problem)
 
 
 if __name__ == "__main__":
