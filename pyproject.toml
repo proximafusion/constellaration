@@ -29,7 +29,9 @@ dependencies = [
   "desc-opt==0.17.1",
   "ipython",
   "ipykernel",
-  "interpax==0.3.14",
+  # interpax 0.3.15+ requires Python >= 3.11
+  "interpax==0.3.14; python_version < '3.11'",
+  "interpax==0.3.16; python_version >= '3.11'",
   "jax<=0.10.0",
   "jaxtyping",
   "kaleido",
