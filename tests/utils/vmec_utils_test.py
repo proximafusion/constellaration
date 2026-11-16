@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from constellaration.mhd import vmec_utils
+from constellaration.utils import file_exporter
 
 
 def test_read_old_wout_json():
@@ -60,3 +61,15 @@ def test_read_binary_encoded_wout_json():
     assert wout_blob.ns == wout_original.ns
     assert wout_blob.mpol == wout_original.mpol
     assert wout_blob.ntor == wout_original.ntor
+
+
+def test_write_old_wout_json_to_vmec2000_wout_file(tmp_path: Path) -> None:
+    with Path("tests/utils/huggingface_dataset_wout.json").open("r") as f:
+        wout = vmec_utils.VmecppWOut.model_validate_json(f.read())
+    wout_path = tmp_path / "wout.nc"
+
+    file_exporter.to_vmec2000_wout_file(wout, wout_path)
+
+    read_back = vmec_utils.VmecppWOut.from_wout_file(wout_path)
+    np.testing.assert_array_equal(read_back.rmnc, wout.rmnc)
+    np.testing.assert_array_equal(read_back.zmns, wout.zmns)
