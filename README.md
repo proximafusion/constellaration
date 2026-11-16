@@ -43,6 +43,8 @@ Differences that affect benchmark scores:
 - **`0.2.1` → `0.2.6`:** the rotational transform constraint uses the absolute value of the edge rotational transform, so boundaries with negative iota are no longer penalized. Newer VMEC++ and other numerical dependencies cause only negligible numerical differences.
 - **`0.2.6` → `0.3.0`:** the flux compression in regions of bad curvature (a constraint of the MHD-stable problem) is computed with the field-aligned (PEST) Jacobian instead of the VMEC one ([#109](https://github.com/proximafusion/constellaration/pull/109)). This fixes a bug but changes MHD-stable feasibility, so `0.3.0` and later are not comparable to the leaderboard.
 
+Both optimization runners use the same absolute-value constraint as the benchmark. Surface PyTree registration is shared by the runners and data generation.
+
 > [!NOTE]
 > From 2026-10-02 to 2026-10-08 the leaderboard was briefly evaluated with `0.3.0`. The affected submissions have been re-evaluated with `0.2.6`.
 
