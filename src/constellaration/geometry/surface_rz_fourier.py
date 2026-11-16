@@ -12,6 +12,7 @@ from typing_extensions import Self
 from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.geometry import surface_utils
+from constellaration.utils import pytree
 from constellaration.utils.types import NpOrJaxArray, ScalarFloat
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,12 @@ class SurfaceRZFourier(pydantic_numpy.BaseModelWithNumpy):
             )
 
         return self
+
+
+pytree.register_pydantic_data(
+    SurfaceRZFourier,
+    meta_fields=["n_field_periods", "is_stellarator_symmetric"],
+)
 
 
 def from_simsopt(surface: geo.SurfaceRZFourier) -> SurfaceRZFourier:

@@ -12,11 +12,6 @@ import constellaration.optimization.settings as optimization_settings
 import constellaration.problems as problems
 from constellaration.utils import pytree
 
-pytree.register_pydantic_data(
-    rz_fourier.SurfaceRZFourier,
-    meta_fields=["n_field_periods", "is_stellarator_symmetric"],
-)
-
 NAN_TO_HIGH_VALUE = 10.0
 
 
@@ -74,7 +69,7 @@ def constraints_fun(
                     metrics.average_triangularity
                     - problem._average_triangularity_upper_bound,
                     problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                    - metrics.edge_rotational_transform_over_n_field_periods,
+                    - jnp.abs(metrics.edge_rotational_transform_over_n_field_periods),
                 ]
             )
     elif isinstance(problem, problems.SimpleToBuildQIStellarator):
@@ -85,7 +80,7 @@ def constraints_fun(
                 [
                     metrics.aspect_ratio - problem._aspect_ratio_upper_bound,
                     problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                    - metrics.edge_rotational_transform_over_n_field_periods,
+                    - jnp.abs(metrics.edge_rotational_transform_over_n_field_periods),
                     jnp.log10(metrics.qi) - problem._log10_qi_upper_bound
                     if metrics.qi is not None
                     else 1.0,
@@ -103,7 +98,7 @@ def constraints_fun(
                 [
                     metrics.aspect_ratio - aspect_ratio_upper_bound,
                     problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                    - metrics.edge_rotational_transform_over_n_field_periods,
+                    - jnp.abs(metrics.edge_rotational_transform_over_n_field_periods),
                     jnp.log10(metrics.qi) - problem._log10_qi_upper_bound
                     if metrics.qi is not None
                     else 1.0,
