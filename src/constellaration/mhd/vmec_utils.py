@@ -249,13 +249,13 @@ class VmecppWOut(vmecpp.VmecWOut):
     def nyquist_poloidal_mode_numbers(
         self,
     ) -> jt.Int[np.ndarray, " n_fourier_coefficients_nyquist"]:
-        return self.xm_nyq
+        return np.asarray(self.xm_nyq)
 
     @property
     def nyquist_toroidal_mode_numbers(
         self,
     ) -> jt.Int[np.ndarray, " n_fourier_coefficients_nyquist"]:
-        return self.xn_nyq
+        return np.asarray(self.xn_nyq)
 
     @property
     def poloidal_mode_numbers(
@@ -265,7 +265,7 @@ class VmecppWOut(vmecpp.VmecWOut):
 
         Example for `mpol=4`, `ntor=1`: xm = [0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3]
         """
-        return self.xm
+        return np.asarray(self.xm)
 
     @property
     def toroidal_mode_numbers(
@@ -276,7 +276,7 @@ class VmecppWOut(vmecpp.VmecWOut):
         Note that they include the factor `nfp`, i.e. for `mpol=4`, `ntor=1`, `nfp=5`:
         xn = [0, 5,-5, 0, 5,-5, 0, 5,-5, 0, 5]
         """
-        return self.xn
+        return np.asarray(self.xn)
 
 
 def run_vmec(
@@ -438,7 +438,7 @@ def magnetic_field_magnitude(
     """Computes the magnetic field magnitude on a set of (s, theta, phi) points."""
     magnetic_field_interpolator = _build_radial_interpolator(
         equilibrium=equilibrium,
-        fourier_coefficients=equilibrium.bmnc.T[1:, :],
+        fourier_coefficients=np.asarray(equilibrium.bmnc.T[1:, :]),
         is_on_full_mesh=False,
     )
     magnetic_field_fourier_coefficients = _interpolate_radially(

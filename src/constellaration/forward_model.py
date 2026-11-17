@@ -134,7 +134,7 @@ def forward_model(
     )
     iota = radial_profile.InterpolatedRadialProfile(
         rho=normalized_effective_radius_on_full_grid_mesh,
-        values=equilibrium.iotaf,
+        values=np.asarray(equilibrium.iotaf),
     )
     axis_rotational_transform = float(
         radial_profile.evaluate_at_normalized_effective_radius(iota, np.array([0.0]))
@@ -210,8 +210,8 @@ def forward_model(
         flux_compression_in_regions_of_bad_curvature = None
 
     metrics = ConstellarationMetrics(
-        aspect_ratio=equilibrium.aspect,
-        aspect_ratio_over_edge_rotational_transform=equilibrium.aspect
+        aspect_ratio=float(equilibrium.aspect),
+        aspect_ratio_over_edge_rotational_transform=float(equilibrium.aspect)
         / edge_rotational_transform,
         max_elongation=max_elongation,
         edge_rotational_transform_over_n_field_periods=edge_rotational_transform

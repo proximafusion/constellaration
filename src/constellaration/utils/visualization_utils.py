@@ -87,5 +87,6 @@ def _to_figure(fig: mpl_figure.Figure | axes.Axes) -> mpl_figure.Figure:
     if isinstance(fig, axes.Axes):
         ax_figure = fig.get_figure()
         assert ax_figure is not None
-        fig = ax_figure
+        # Newer matplotlib types get_figure() as `Figure | SubFigure`.
+        return ax_figure.figure
     return fig
