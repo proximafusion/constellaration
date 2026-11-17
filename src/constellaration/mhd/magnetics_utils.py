@@ -119,11 +119,11 @@ def normalized_magnetic_gradient_scale_length(
             d_x_d_s = 7 / 4 * d_x_d_s_n - d_x_d_s_n_minus_1 + 1 / 4 * d_x_d_s_n_minus_2
         return d_x_d_s
 
-    d_rmnc_d_s = get_d_x_d_s_at_the_boundary(rmnc, True)
-    d_zmns_d_s = get_d_x_d_s_at_the_boundary(zmns, True)
-    d_bmnc_d_s = get_d_x_d_s_at_the_boundary(bmnc, False)
-    d_bsupumnc_d_s = get_d_x_d_s_at_the_boundary(bsupumnc, False)
-    d_bsupvmnc_d_s = get_d_x_d_s_at_the_boundary(bsupvmnc, False)
+    d_rmnc_d_s = get_d_x_d_s_at_the_boundary(np.asarray(rmnc), True)
+    d_zmns_d_s = get_d_x_d_s_at_the_boundary(np.asarray(zmns), True)
+    d_bmnc_d_s = get_d_x_d_s_at_the_boundary(np.asarray(bmnc), False)
+    d_bsupumnc_d_s = get_d_x_d_s_at_the_boundary(np.asarray(bsupumnc), False)
+    d_bsupvmnc_d_s = get_d_x_d_s_at_the_boundary(np.asarray(bsupvmnc), False)
 
     def get_x_at_the_boundary(x: np.ndarray, is_full_mesh: bool) -> np.ndarray:
         """Returns the value of x at the plasma boundary."""
@@ -133,12 +133,12 @@ def normalized_magnetic_gradient_scale_length(
             # Second order extrapolation to the boundary
             return 7 / 4 * x[-1, :] - x[-2, :] + 1 / 4 * x[-3, :]
 
-    rmnc = get_x_at_the_boundary(rmnc, True)
-    zmns = get_x_at_the_boundary(zmns, True)
-    gmnc = get_x_at_the_boundary(gmnc, False)
-    bmnc = get_x_at_the_boundary(bmnc, False)
-    bsupumnc = get_x_at_the_boundary(bsupumnc, False)
-    bsupvmnc = get_x_at_the_boundary(bsupvmnc, False)
+    rmnc = get_x_at_the_boundary(np.asarray(rmnc), True)
+    zmns = get_x_at_the_boundary(np.asarray(zmns), True)
+    gmnc = get_x_at_the_boundary(np.asarray(gmnc), False)
+    bmnc = get_x_at_the_boundary(np.asarray(bmnc), False)
+    bsupumnc = get_x_at_the_boundary(np.asarray(bsupumnc), False)
+    bsupvmnc = get_x_at_the_boundary(np.asarray(bsupvmnc), False)
 
     xm = xm[:, np.newaxis, np.newaxis]
     xn = xn[:, np.newaxis, np.newaxis]
