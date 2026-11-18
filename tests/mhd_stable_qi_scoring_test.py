@@ -308,7 +308,7 @@ def _make_metrics(
     lgradB: float,
 ) -> forward_model.ConstellarationMetrics:
     """Return a ConstellarationMetrics that is feasible at all tightness levels."""
-    base = dict(
+    return forward_model.ConstellarationMetrics(
         aspect_ratio=aspect_ratio,
         axis_magnetic_mirror_ratio=0.1,
         aspect_ratio_over_edge_rotational_transform=8.0,
@@ -322,7 +322,6 @@ def _make_metrics(
         vacuum_well=0.1,
         minimum_normalized_magnetic_gradient_scale_length=lgradB,
     )
-    return forward_model.ConstellarationMetrics(**base)
 
 
 def test_problem_for_tightness_level_returns_correct_classes() -> None:

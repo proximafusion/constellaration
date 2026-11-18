@@ -26,7 +26,10 @@ jobs:
           # Overwrite broken mirror file with a working Ubuntu archive URL
           echo "http://azure.archive.ubuntu.com/ubuntu" | sudo tee /etc/apt/apt-mirrors.txt
           sudo apt-get update
-          sudo apt-get install -y libnetcdf-dev
+          # netcdf for booz-xform; Fortran, MPI, HDF5 and LAPACK to build SPECTRE.
+          # OpenBLAS rather than the reference LAPACK: SPECTRE's single-volume solve
+          # calls DGESV with an empty system, which the reference library aborts on.
+          sudo apt-get install -y libnetcdf-dev gfortran libopenmpi-dev openmpi-bin libhdf5-openmpi-dev libopenblas-dev
       # Parse the dependencies from the pyproject.toml file and install them,
       # without installing and building the entire vmecpp project
       - run: |
