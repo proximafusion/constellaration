@@ -1,5 +1,8 @@
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
+import vmecpp
 
 from constellaration.mhd import flux_power_series, pressure_profile
 
@@ -66,3 +69,36 @@ def test_shape_and_scale_are_independent():
     )
     scaled = pressure_profile.IntegratedBernsteinProfile(axis_pressure=2)
     assert pressure_profile.to_power_series(scaled).coefficients[0] == 2
+
+
+def test_pressure_profile_is_differentiable():
+    profile = pressure_profile.IntegratedBernsteinProfile(
+        axis_pressure=3000, gradient_logits=(0.35, -0.4)
+    )
+
+    @jax.jit
+    def average(p):
+        coefficients = pressure_profile.power_series_coefficients(p)
+        return jnp.sum(coefficients / jnp.arange(1, coefficients.size + 1))
+
+    with vmecpp.enable_x64(True):
+        derivative = jax.grad(average)(profile)
+        assert isinstance(derivative, pressure_profile.IntegratedBernsteinProfile)
+        for step in (1e-4, 5e-5):
+            plus = profile.model_copy(
+                update={
+                    "axis_pressure": profile.axis_pressure + step,
+                    "gradient_logits": (profile.gradient_logits[0] + step, -0.4),
+                }
+            )
+            minus = profile.model_copy(
+                update={
+                    "axis_pressure": profile.axis_pressure - step,
+                    "gradient_logits": (profile.gradient_logits[0] - step, -0.4),
+                }
+            )
+            np.testing.assert_allclose(
+                derivative.axis_pressure + derivative.gradient_logits[0],
+                (average(plus) - average(minus)) / (2 * step),
+                rtol=1e-7,
+            )

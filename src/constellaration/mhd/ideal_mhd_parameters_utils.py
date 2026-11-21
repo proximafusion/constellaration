@@ -2,8 +2,11 @@
 
 from typing import TYPE_CHECKING
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 from scipy import constants as scipy_constants
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import (
@@ -34,23 +37,30 @@ def design_to_ideal_mhd_parameters(
     treating uniform-s pressure averaging as an area average. It is a heuristic,
     not a guarantee of VMEC's axis field in a shaped 3-D equilibrium.
     """
+    with enable_x64(True):
+        pressure, flux = design_pressure_and_flux(design)
+        return ideal_mhd_parameters.IdealMHDParameters(
+            pressure=flux_power_series.FluxPowerSeriesProfile(
+                coefficients=pressure.tolist(),
+            ),
+            toroidal_current=flux_power_series.FluxPowerSeriesProfile(
+                coefficients=[0.0],
+            ),
+            boundary_toroidal_flux=float(flux),
+        )
+
+
+def design_pressure_and_flux(design: "problems.Design") -> tuple[jax.Array, jax.Array]:
+    """Power-series pressure and estimated edge flux, differentiable in design."""
+    area = surface_rz_fourier.compute_mean_cross_sectional_area(design.boundary)
     if design.pressure is None:
-        return ideal_mhd_parameters.boundary_to_ideal_mhd_parameters(design.boundary)
-    pressure = pressure_profile.to_power_series(design.pressure)
-    mean_pressure = flux_power_series.evaluate_volume_average(pressure)
-    minor_radius = surface_rz_fourier.evaluate_minor_radius(design.boundary)
-    target_field = 1.0  # tesla
-    mean_field = (
-        target_field
-        + scipy_constants.mu_0
-        * (design.pressure.axis_pressure - mean_pressure)
-        / target_field
+        return jnp.array([1.0, -1.0]), area
+    pressure = pressure_profile.power_series_coefficients(design.pressure)
+    mean_pressure = jnp.sum(pressure / jnp.arange(1, pressure.size + 1))
+    mean_field = 1 + scipy_constants.mu_0 * (
+        design.pressure.axis_pressure - mean_pressure
     )
-    return ideal_mhd_parameters.IdealMHDParameters(
-        pressure=pressure,
-        toroidal_current=flux_power_series.FluxPowerSeriesProfile(coefficients=[0.0]),
-        boundary_toroidal_flux=float(np.pi * minor_radius**2 * mean_field),
-    )
+    return pressure, area * mean_field
 
 
 def get_ideal_mhd_parameters_for_volume_averaged_beta(
