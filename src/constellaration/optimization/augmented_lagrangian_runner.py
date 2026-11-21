@@ -90,7 +90,6 @@ def objective_constraints(
     problem: problems.SingleObjectiveProblem | problems.MHDStableQIStellarator,
     unravel_and_unmask_fn: Callable[[jnp.ndarray], problems.Design],
     settings: forward_model.ConstellarationSettings,
-    aspect_ratio_upper_bound: float | None,
 ) -> tuple[
     tuple[jnp.ndarray, jnp.ndarray], forward_model.ConstellarationMetrics | None
 ]:
@@ -117,76 +116,20 @@ def objective_constraints(
         except Exception as _:
             pass
 
-        if isinstance(problem, problems.GeometricalProblem):
+        if isinstance(
+            problem,
+            (
+                problems.GeometricalProblem,
+                problems.SimpleToBuildQIStellarator,
+                problems.MHDStableQIStellarator,
+            ),
+        ):
             if metrics is None:
                 objective = jnp.array(NAN_TO_HIGH_VALUE)
-                constraints = jnp.ones(3) * NAN_TO_HIGH_VALUE
+                constraints = jnp.full(problem.alm_constraint_count, NAN_TO_HIGH_VALUE)
             else:
-                objective = jnp.array(metrics.max_elongation)
-                constraints = jnp.array(
-                    [
-                        metrics.aspect_ratio - problem._aspect_ratio_upper_bound,
-                        metrics.average_triangularity
-                        - problem._average_triangularity_upper_bound,
-                        problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                        - jnp.abs(
-                            metrics.edge_rotational_transform_over_n_field_periods
-                        ),
-                    ]
-                )
-        elif isinstance(problem, problems.SimpleToBuildQIStellarator):
-            if metrics is None:
-                objective = jnp.array(NAN_TO_HIGH_VALUE)
-                constraints = jnp.ones(5) * NAN_TO_HIGH_VALUE
-            else:
-                objective = jnp.array(
-                    20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
-                )
-                constraints = jnp.array(
-                    [
-                        metrics.aspect_ratio - problem._aspect_ratio_upper_bound,
-                        problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                        - jnp.abs(
-                            metrics.edge_rotational_transform_over_n_field_periods
-                        ),
-                        jnp.log10(metrics.qi) - problem._log10_qi_upper_bound
-                        if metrics.qi is not None
-                        else 1.0,
-                        metrics.edge_magnetic_mirror_ratio
-                        - problem._edge_magnetic_mirror_ratio_upper_bound,
-                        metrics.max_elongation - problem._max_elongation_upper_bound,
-                    ]
-                )
-        elif isinstance(problem, problems.MHDStableQIStellarator):
-            if metrics is None:
-                objective = jnp.array(NAN_TO_HIGH_VALUE)
-                constraints = jnp.ones(6) * NAN_TO_HIGH_VALUE
-            else:
-                assert aspect_ratio_upper_bound is not None
-                objective = jnp.array(
-                    20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
-                )
-                constraints = jnp.array(
-                    [
-                        metrics.aspect_ratio - aspect_ratio_upper_bound,
-                        problem._edge_rotational_transform_over_n_field_periods_lower_bound
-                        - jnp.abs(
-                            metrics.edge_rotational_transform_over_n_field_periods
-                        ),
-                        jnp.log10(metrics.qi) - problem._log10_qi_upper_bound
-                        if metrics.qi is not None
-                        else 1.0,
-                        metrics.edge_magnetic_mirror_ratio
-                        - problem._edge_magnetic_mirror_ratio_upper_bound,
-                        metrics.flux_compression_in_regions_of_bad_curvature
-                        - problem._flux_compression_in_regions_of_bad_curvature_upper_bound  # noqa: E501
-                        if metrics.flux_compression_in_regions_of_bad_curvature
-                        is not None
-                        else 1.0,
-                        100 * problem._vacuum_well_lower_bound
-                        - 100 * metrics.vacuum_well,
-                    ]
-                )
+                value, residuals = problem.alm_objective_constraints(metrics)
+                objective, constraints = jnp.array(value), jnp.array(residuals)
         else:
             raise RuntimeError("Problem not supported")
 
@@ -197,7 +140,6 @@ def run(
     design: problems.Design,
     settings: optimization_settings.OptimizationSettings,
     problem: problems.MHDStableQIStellarator | problems.SingleObjectiveProblem,
-    aspect_ratio_upper_bound: float | None = None,
 ) -> tuple[problems.Design, forward_model.ConstellarationMetrics | None]:
     """Run optimization using the Augmented Lagrangian method.
 
@@ -215,7 +157,6 @@ def run(
         settings: Optimization settings including AL method parameters.
         problem: The problem to solve, either MHDStableQIStellarator or
             SingleObjectiveProblem.
-        aspect_ratio_upper_bound: Optional upper bound for the aspect ratio constraint.
 
     Returns:
         The final recommended design and its metrics (None on
@@ -306,7 +247,6 @@ def run(
         problem,
         unravel_and_unmask_fn,
         settings.forward_model_settings,
-        aspect_ratio_upper_bound,
     )
     n_function_evals = 0
 
@@ -367,7 +307,6 @@ def run(
                         problem,
                         unravel_and_unmask_fn,
                         settings.forward_model_settings,
-                        aspect_ratio_upper_bound,
                     )
                     running_evaluations.append((future, candidate))
                     rest_budget -= 1
@@ -412,7 +351,6 @@ def run(
             problem,
             unravel_and_unmask_fn,
             settings.forward_model_settings,
-            aspect_ratio_upper_bound,
         )
 
         state = al.update_augmented_lagrangian_state(

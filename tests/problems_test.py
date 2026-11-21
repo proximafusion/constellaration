@@ -212,6 +212,5 @@ def test_optimizer_iota_constraints(
             problem=problem,
             unravel_and_unmask_fn=lambda _: problems.Design(boundary=boundary),
             settings=settings,
-            aspect_ratio_upper_bound=6.0,
         )
         assert float(constraints[iota_idx]) == pytest.approx(expected, abs=1e-7)
