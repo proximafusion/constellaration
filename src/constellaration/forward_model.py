@@ -9,8 +9,10 @@ from constellaration.mhd import magnetics_utils, turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
 from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
+from constellaration.utils import pytree
 
 
+@pytree.register_pydantic_data
 class ConstellarationMetrics(pydantic.BaseModel):
     aspect_ratio: float
 
@@ -51,6 +53,9 @@ class ConstellarationSettings(pydantic.BaseModel):
             fidelity="low_fidelity",
         )
     )
+    vmec_settings: vmec_settings_module.VmecSettings | None = None
+    """Explicit resolution override; when set, the VMEC preset is ignored."""
+
     boozer_preset_settings: boozer_module.BoozerPresetSettings | None = (
         boozer_module.BoozerPresetSettings(
             normalized_toroidal_flux=[1.0],
@@ -107,9 +112,11 @@ def forward_model(
         )
     if settings is None:
         settings = ConstellarationSettings()
-    vmec_settings = vmec_settings_module.create_vmec_settings_from_preset(
-        boundary,
-        settings=settings.vmec_preset_settings,
+    vmec_settings = settings.vmec_settings or (
+        vmec_settings_module.create_vmec_settings_from_preset(
+            boundary,
+            settings=settings.vmec_preset_settings,
+        )
     )
     equilibrium = vmec_utils.run_vmec(
         boundary=boundary,
