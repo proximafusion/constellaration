@@ -6,7 +6,12 @@ import pytest
 import vmecpp
 
 from constellaration import forward_model, initial_guess
-from constellaration.mhd import ideal_mhd_parameters, magnetics_utils, vmec_utils
+from constellaration.mhd import (
+    ideal_mhd_parameters,
+    magnetics_utils,
+    turbulent_transport,
+    vmec_utils,
+)
 from tests.equilibrium_reference_test import NAMES, REFERENCES
 from tests.utils.vmec_utils_test import (
     assert_directional_derivative,
@@ -169,3 +174,46 @@ def test_gradient_length_derivative():
             )
 
         assert_directional_derivative(metric)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_flux_compression_value(name):
+    with vmecpp.enable_x64(True):
+        _, settings, wout, _ = pinned_case(name)
+        transport = settings.turbulent_settings
+        assert transport is not None
+        actual = (
+            turbulent_transport.compute_flux_compression_in_regions_of_bad_curvature(
+                vmec_utils.VmecppWOut.model_construct(**wout), transport
+            )
+        )
+    expected = json.loads((REFERENCES / name / "metrics.json").read_text())
+    # Cubic local interpolation and a smooth zero-drift contour replace the hard mask.
+    np.testing.assert_allclose(
+        actual, expected["flux_compression_in_regions_of_bad_curvature"], atol=0.003
+    )
+
+
+def test_flux_compression_gradient():
+    with resolved_case() as (template, family, modes):
+        settings = turbulent_transport.IdealMHDTurbulentTransportMetricsSettings(
+            normalized_toroidal_flux=np.array([0.49]),
+            n_field_lines=29,
+            n_toroidal_points=32,
+        )
+
+        compression = (
+            turbulent_transport.compute_flux_compression_in_regions_of_bad_curvature
+        )  # noqa: E501
+
+        def metric(t):
+            _, out = family(t)
+            return compression(
+                vmec_utils.VmecppWOut.model_construct(
+                    _fields_set=None, **out, **modes, nfp=template.nfp, lasym=False
+                ),
+                settings,
+            )
+
+        # At low iota, long field lines amplify changes in toroidal angle.
+        assert_directional_derivative(metric, steps=(2e-5, 1e-5))
