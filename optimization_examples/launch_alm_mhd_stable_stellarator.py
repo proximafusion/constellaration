@@ -46,7 +46,9 @@ def main():
     for aspect_ratio_upper_bound in ASPECT_RATIO_UPPER_BOUNDS:
         seed_util.seed_everything(123)
 
-        problem = problems.MHDStableQIStellarator()
+        problem = problems.MHDStableQIStellarator(
+            aspect_ratio_upper_bound=aspect_ratio_upper_bound
+        )
         boundary = init.generate_nae(
             aspect_ratio=20.0 * 0.25 * 3,
             max_elongation=4.0,
@@ -61,7 +63,6 @@ def main():
             problems.Design(boundary=boundary),
             OPTIMIZATION_SETTINGS,
             problem,
-            aspect_ratio_upper_bound,
         )
 
 
