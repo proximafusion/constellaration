@@ -1,7 +1,7 @@
 import pydantic
 
-import constellaration.forward_model as forward_model
 import constellaration.optimization.augmented_lagrangian as al
+from constellaration import forward_model
 
 
 class NevergradSettings(pydantic.BaseModel):
@@ -82,3 +82,15 @@ class OptimizationSettings(pydantic.BaseModel):
     infinity_norm_spectrum_scaling: float
     """Scaling factor for the spectrum when applying the infinity norm
     in the objective or constraints."""
+
+    log_axis_pressure_scaling: float = pydantic.Field(
+        default=1.0, gt=0, allow_inf_nan=False
+    )
+    """Scale for log(p0 / Pa) in joint AL optimization. An optimizer step dx
+    multiplies axis pressure by exp(log_axis_pressure_scaling * dx)."""
+
+    pressure_gradient_logits_scaling: float = pydantic.Field(
+        default=1.0, gt=0, allow_inf_nan=False
+    )
+    """Scale for each pressure gradient logit in joint AL optimization. An optimizer
+    step dx changes a logit by pressure_gradient_logits_scaling * dx."""

@@ -57,7 +57,12 @@ def main():
             max_toroidal_mode=1,
         )
 
-        runner.run(boundary, OPTIMIZATION_SETTINGS, problem, aspect_ratio_upper_bound)
+        runner.run(
+            problems.Design(boundary=boundary),
+            OPTIMIZATION_SETTINGS,
+            problem,
+            aspect_ratio_upper_bound,
+        )
 
 
 if __name__ == "__main__":

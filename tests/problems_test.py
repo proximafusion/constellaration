@@ -202,7 +202,7 @@ def test_optimizer_iota_constraints(
         )
         assert float(constraints[iota_idx]) == pytest.approx(expected, abs=1e-7)
 
-        def evaluate_metrics(boundary, settings):  # noqa: ARG001
+        def evaluate_metrics(boundary, settings, ideal_mhd_parameters):  # noqa: ARG001
             return metrics, None
 
         monkeypatch.setattr(forward_model, "forward_model", evaluate_metrics)
@@ -210,7 +210,7 @@ def test_optimizer_iota_constraints(
             x=jnp.zeros(1),
             scale=jnp.ones(1),
             problem=problem,
-            unravel_and_unmask_fn=lambda _: boundary,
+            unravel_and_unmask_fn=lambda _: problems.Design(boundary=boundary),
             settings=settings,
             aspect_ratio_upper_bound=6.0,
         )
