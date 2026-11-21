@@ -49,6 +49,8 @@ class SurfaceRZFourier(pydantic_numpy.BaseModelWithNumpy):
     - z_cos: z_{m, n}^{cos}
 
     If r_sin and z_cos are None, then stellarator symmetry is assumed and vice versa.
+    This is a JAX PyTree: Fourier coefficients are differentiable leaves and
+    symmetry and field periods are static metadata.
     """
 
     r_cos: FourierCoefficients
@@ -267,7 +269,7 @@ def evaluate_minor_radius(
     surface: SurfaceRZFourier,
     n_theta: int = 50,
     n_phi: int = 51,
-) -> pydantic.NonNegativeFloat:
+) -> jax.Array:
     """Return the minor radius of the surface defined as the radius of the circle with
     the same area as the average cross sectional area of the surface.
 
@@ -278,7 +280,7 @@ def evaluate_minor_radius(
         n_phi: Number of quadrature points in the phi dimension of the surface,
             used for the numerical integration.
     """
-    return np.sqrt(
+    return jnp.sqrt(
         compute_mean_cross_sectional_area(surface=surface, n_theta=n_theta, n_phi=n_phi)
         / np.pi
     )
@@ -288,57 +290,31 @@ def compute_mean_cross_sectional_area(
     surface: SurfaceRZFourier,
     n_theta: int = 50,
     n_phi: int = 51,
-) -> pydantic.NonNegativeFloat:
+) -> jax.Array:
     """Compute the mean cross sectional area of the surface.
 
     The mean cross sectional area is defined as the average of the cross sectional areas
     of the surface along the toroidal direction.
 
-    The code is taken from Simsopt, please refer to the documentation here
-    https://simsopt.readthedocs.io/en/latest/simsopt.geo.html#simsopt.geo.surface.Surface.mean_cross_sectional_area
-
-    The code provides a numerical integration of the cross sectional area of the surface
-    and an average across the toroidal direction, which is general enough to not assume
-    that phi is the real toroidal angle.
-
-    Args:
-        surface: The surface to compute the mean cross sectional area of.
-        n_theta: Number of quadrature points in the theta dimension of the surface,
-            used for the numerical integration.
-        n_phi: Number of quadrature points in the phi dimension of the surface,
-            used for the numerical integration.
+    Use Green's theorem and periodic quadrature for the poloidal sections.
     """
-    # n_theta - 1, n_phi - 1 is to make sure this calculation is equivalent to using
-    # Simsopt
-    theta_phi_grid = surface_utils.make_theta_phi_grid(
-        n_theta - 1, n_phi - 1, phi_upper_bound=2 * np.pi, include_endpoints=False
+    theta = 2 * jnp.pi * jnp.arange(n_theta - 1) / (n_theta - 1)
+    phi = 2 * jnp.pi * jnp.arange(n_phi - 1) / (n_phi - 1)
+    m, n = surface.poloidal_modes, surface.toroidal_modes
+    phase = (
+        theta[:, None, None, None] * m
+        - phi[None, :, None, None] * n * surface.n_field_periods
     )
-    xyz = evaluate_points_xyz(surface, theta_phi_grid)
-    x2y2 = xyz[:, :, 0] ** 2 + xyz[:, :, 1] ** 2
-    dgamma1 = evaluate_dxyz_dphi(surface, theta_phi_grid) * 2 * np.pi
-    dgamma2 = evaluate_dxyz_dtheta(surface, theta_phi_grid) * 2 * np.pi
-
-    # compute the average cross sectional area
-    J = np.zeros((xyz.shape[0], xyz.shape[1], 2, 2))
-    J[:, :, 0, 0] = (
-        xyz[:, :, 0] * dgamma1[:, :, 1] - xyz[:, :, 1] * dgamma1[:, :, 0]
-    ) / x2y2
-    J[:, :, 0, 1] = (
-        xyz[:, :, 0] * dgamma2[:, :, 1] - xyz[:, :, 1] * dgamma2[:, :, 0]
-    ) / x2y2
-    J[:, :, 1, 0] = 0.0
-    J[:, :, 1, 1] = 1.0
-
-    detJ = np.linalg.det(J)
-    Jinv = np.linalg.inv(J)
-
-    dZ_dtheta = (
-        dgamma1[:, :, 2] * Jinv[:, :, 0, 1] + dgamma2[:, :, 2] * Jinv[:, :, 1, 1]
-    )
-    mean_cross_sectional_area = np.abs(np.mean(np.sqrt(x2y2) * dZ_dtheta * detJ)) / (
-        2 * np.pi
-    )
-    return mean_cross_sectional_area
+    cos = jnp.cos(phase)
+    r = jnp.sum(surface.r_cos * cos, axis=(-2, -1))
+    z_theta = jnp.sum(m * surface.z_sin * cos, axis=(-2, -1))
+    if not surface.is_stellarator_symmetric:
+        assert surface.r_sin is not None
+        assert surface.z_cos is not None
+        sin = jnp.sin(phase)
+        r += jnp.sum(surface.r_sin * sin, axis=(-2, -1))
+        z_theta -= jnp.sum(m * surface.z_cos * sin, axis=(-2, -1))
+    return 2 * jnp.pi * jnp.abs(jnp.mean(r * z_theta))
 
 
 def compute_aspect_ratio(surface: SurfaceRZFourier) -> float:

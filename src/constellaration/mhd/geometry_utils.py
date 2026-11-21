@@ -1,8 +1,10 @@
+import jax
+import jax.numpy as jnp
 import jaxtyping as jt
 import numpy as np
 from scipy import optimize, special
 
-from constellaration.geometry import surface_rz_fourier, surface_utils
+from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import vmec_utils
 
 
@@ -170,77 +172,57 @@ def max_elongation(
 def average_triangularity(
     surface: surface_rz_fourier.SurfaceRZFourier,
     n_poloidal_points: int = 201,
-) -> float:
-    r"""Compute the average triangularity of the plasma boundary at the two stellarator
-    symmetry planes.
-
-    The triangularity is defined as:
-
-    .. math::
-        \delta = \frac{\delta_{top} + \delta_{bottom}}{2}
-        \delta_{top} = 2 \frac{R0 - R_{Zmax}}{R_{max} - R_{min}}
-        \delta_{bottom} = 2 \frac{R0 - R_{Zmin}}{R_{max} - R_{min}}
-
-    where :math:`R_{max}` and :math:`R_{min}` are the maximum and minimum
-    R in the toroidal cross-section, :math:`R0` is the location of the magnetic axis,
-    :math:`R_{Zmax}` and :math:`R_{Zmin}` are the R coordinates of the location of the
-    maximum and minimum Z in the toroidal cross-section.
-
-    The average triangularity is then computed by averaging the triangularity over the
-    two stellarator symmetry planes (phi = 0 and phi = pi/nfp).
-    """
+) -> jax.Array:
+    """Average triangularity of the two stellarator symmetry sections."""
     if not surface.is_stellarator_symmetric:
         raise NotImplementedError("Non-stellarator symmetric surfaces not supported.")
-
-    theta_phi = surface_utils.make_theta_phi_grid(
-        n_theta=n_poloidal_points,
-        n_phi=2,
-        phi_upper_bound=np.pi / surface.n_field_periods,
-        include_endpoints=True,
+    return _triangularity(
+        surface.r_cos.ravel(),
+        surface.z_sin.ravel(),
+        surface.poloidal_modes.ravel(),
+        surface.toroidal_modes.ravel() * surface.n_field_periods,
+        surface.n_field_periods,
+        n_poloidal_points,
     )
 
-    RZ = surface_rz_fourier.evaluate_points_rz(
-        surface=surface,
-        theta_phi=theta_phi,
-    )
-    return _average_triangularity_from_sections(RZ[..., 0], RZ[..., 1])
 
-
-def equilibrium_average_triangularity(equilibrium: vmec_utils.VmecppWOut) -> float:
-    """Sample triangularity directly on the equilibrium's outermost flux surface."""
+def equilibrium_average_triangularity(equilibrium: vmec_utils.VmecppWOut) -> jax.Array:
+    """Average triangularity of the equilibrium's outermost flux surface."""
     if equilibrium.lasym:
         raise NotImplementedError("Non-stellarator symmetric surfaces not supported.")
-
-    theta_phi = surface_utils.make_theta_phi_grid(
-        n_theta=201,
-        n_phi=2,
-        phi_upper_bound=np.pi / equilibrium.nfp,
-        include_endpoints=True,
+    return _triangularity(
+        equilibrium.rmnc[:, -1],
+        equilibrium.zmns[:, -1],
+        equilibrium.xm,
+        equilibrium.xn,
+        equilibrium.nfp,
+        201,
     )
-    phase = (
-        theta_phi[..., 0, None] * equilibrium.xm
-        - theta_phi[..., 1, None] * equilibrium.xn
-    )
-    r = np.cos(phase) @ equilibrium.rmnc[:, -1]
-    z = np.sin(phase) @ equilibrium.zmns[:, -1]
-    return _average_triangularity_from_sections(r, z)
 
 
-def _average_triangularity_from_sections(R: np.ndarray, Z: np.ndarray) -> float:
-    # Approximate the magnetic axis with the surface centroid.
-    R0 = np.mean(R, axis=0)
+def _triangularity(r_cos, z_sin, m, n, nfp, n_theta):
+    # Keep the legacy centroid and radial width quadrature but refine the height
+    # maximum continuously so its poloidal angle contributes to the derivative.
+    theta = jnp.linspace(0, 2 * jnp.pi, n_theta)
 
-    R_max = np.max(R, axis=0)
-    R_min = np.min(R, axis=0)
+    def one_plane(phi):
+        def phase(t):
+            return t[..., None] * m - phi * n
 
-    minor_radius = (R_max - R_min) / 2
+        angles = phase(theta)
+        r = jnp.cos(angles) @ r_cos
+        z = jnp.sin(angles) @ z_sin
+        start = theta[jnp.argmax(z)]
 
-    indices_of_max_Z = np.argmax(Z, axis=0)
+        def step(_, t):
+            slope = jnp.cos(phase(t)) @ (m * z_sin)
+            second = -jnp.sin(phase(t)) @ (m**2 * z_sin)
+            return t - slope / second
 
-    # Top and bottom triangularity at the two stellarator symmetry planes are equal.
-    triangularity = (R0 - R[indices_of_max_Z, np.arange(2)]) / minor_radius
+        top = jax.lax.fori_loop(0, 5, step, start)
+        return 2 * (jnp.mean(r) - jnp.cos(phase(top)) @ r_cos) / jnp.ptp(r)
 
-    return np.mean(triangularity)
+    return (one_plane(0.0) + one_plane(jnp.pi / nfp)) / 2
 
 
 def _get_polygon_area_from_vertices(

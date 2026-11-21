@@ -1,5 +1,5 @@
-import numpy as np
 import pydantic
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import flux_power_series
@@ -41,8 +41,10 @@ def boundary_to_ideal_mhd_parameters(
         The ideal-MHD parameters, including pressure, toroidal current, and boundary
         toroidal flux.
     """
-    minor_radius = surface_rz_fourier.evaluate_minor_radius(surface=boundary)
-    boundary_toroidal_flux = np.pi * minor_radius**2
+    with enable_x64(True):
+        boundary_toroidal_flux = float(
+            surface_rz_fourier.compute_mean_cross_sectional_area(boundary)
+        )
     return IdealMHDParameters(
         pressure=flux_power_series.FluxPowerSeriesProfile(
             coefficients=[1.0, -1.0],

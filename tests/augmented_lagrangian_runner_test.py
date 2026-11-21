@@ -272,7 +272,7 @@ def test_boundary_only_runner(
         if pressure is None:
             assert ideal_mhd_parameters.pressure.coefficients == [1.0, -1.0]
             assert ideal_mhd_parameters.toroidal_current.coefficients == [0.0]
-            area = np.pi * surface_rz_fourier.evaluate_minor_radius(boundary) ** 2
+            area = float(surface_rz_fourier.compute_mean_cross_sectional_area(boundary))
             assert ideal_mhd_parameters.boundary_toroidal_flux == pytest.approx(area)
         else:
             expected = pressure_profile.to_power_series(pressure)
