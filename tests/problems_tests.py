@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import vmecpp
 from scipy.constants import mu_0
 
 from constellaration import forward_model, initial_guess, problems
@@ -196,7 +197,8 @@ def test_design_without_pressure_uses_near_vacuum_inputs():
     mhd = ideal_mhd_parameters_utils.design_to_ideal_mhd_parameters(design)
     assert mhd.pressure.coefficients == [1.0, -1.0]
     assert mhd.toroidal_current.coefficients == [0.0]
-    area = np.pi * surface_rz_fourier.evaluate_minor_radius(boundary) ** 2
+    with vmecpp.enable_x64(True):
+        area = float(surface_rz_fourier.compute_mean_cross_sectional_area(boundary))
     assert mhd.boundary_toroidal_flux == pytest.approx(area)
 
 
@@ -204,7 +206,8 @@ def test_edge_flux_estimate_tracks_geometry_and_pressure():
     boundary = initial_guess.generate_rotating_ellipse(
         aspect_ratio=6, elongation=1.5, rotational_transform=0.4, n_field_periods=4
     )
-    area = np.pi * surface_rz_fourier.evaluate_minor_radius(boundary) ** 2
+    with vmecpp.enable_x64(True):
+        area = float(surface_rz_fourier.compute_mean_cross_sectional_area(boundary))
 
     def flux(p0, logits=(0.0, 0.0, 0.0)):
         candidate = problems.Design(

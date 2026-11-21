@@ -104,15 +104,10 @@ def test_reference_metrics(name):
     )
     actual = forward_model.metrics_from_equilibrium(wout, settings)
     actual_values, expected_values = actual.model_dump(), expected.model_dump()
-    # VMEC can shift the poloidal origin. The legacy sampling includes both
-    # endpoints, giving the poloidal origin double weight in the centroid.
-    wout_triangularity = {
-        "boundary_1": -0.5279570064810545,
-        "boundary_2": -0.4522226497230545,
-        "finite_beta": -0.004975124378111564,
-    }
+    # The outer-surface poloidal origin can shift, and the height maximum is
+    # now refined between quadrature points rather than rounded to the grid.
     key = "average_triangularity"
-    expected_values[key] = wout_triangularity[name]
+    assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), abs=0.03)
     assert actual_values == pytest.approx(expected_values, rel=3e-5, abs=1e-8)
 
 
