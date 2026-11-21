@@ -103,9 +103,11 @@ def test_reference_metrics(name):
         vmec_utils.VmecppWOut.from_wout_file(root / "wout.nc")
     )
     actual = forward_model.metrics_from_equilibrium(boundary, wout, settings)
-    assert actual.model_dump() == pytest.approx(
-        expected.model_dump(), rel=3e-5, abs=1e-8
-    )
+    actual_values, expected_values = actual.model_dump(), expected.model_dump()
+    # JAX uses local cubic interpolants rather than SIMSOPT's global splines.
+    key = "flux_compression_in_regions_of_bad_curvature"
+    assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), abs=5e-4)
+    assert actual_values == pytest.approx(expected_values, rel=3e-5, abs=1e-8)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
-from typing import Any, cast
-
+import jax
+import jax.numpy as jnp
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from simsopt import mhd
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
-from constellaration.mhd import vmec_utils
+from constellaration.mhd import jax_turbulent_transport, vmec_utils
 
 
 class IdealMHDTurbulentTransportMetricsSettings(
@@ -24,67 +24,50 @@ class IdealMHDTurbulentTransportMetricsSettings(
     """The number of points along field lines to use."""
 
 
+_FIELDS = (
+    "rmnc",
+    "zmns",
+    "lmns",
+    "gmnc",
+    "bmnc",
+    "iotas",
+    "bsubsmns",
+    "bsubumnc",
+    "bsubvmnc",
+    "bsupvmnc",
+    "pres",
+    "phi",
+    "phipf",
+    "Aminor_p",
+)
+_MODES = ("xm", "xn", "xm_nyq", "xn_nyq")
+_reporting_kernel = jax.jit(
+    jax_turbulent_transport.flux_compression,
+    static_argnums=(3, 4, 5),
+    static_argnames=("smoothing",),
+)
+
+
 def compute_flux_compression_in_regions_of_bad_curvature(
     equilibrium: vmec_utils.VmecppWOut,
     settings: IdealMHDTurbulentTransportMetricsSettings,
 ) -> float:
-    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
-
-    alpha, theta = _set_up_surface_grid(
-        settings=settings,
-        n_field_periods=equilibrium.nfp,
-        is_stellarator_symmetric=not equilibrium.lasym,
-    )
-
-    data = mhd.vmec_fieldlines(
-        vs=vmec,
-        s=settings.normalized_toroidal_flux,
-        alpha=alpha,
-        theta1d=theta,
-    )
-    data = cast(Any, data)  # silence pylance warnings about data
-
-    minor_radius = equilibrium.Aminor_p
-
-    # Field-aligned (PEST) Jacobian.
-    jacobian = data.edge_toroidal_flux_over_2pi / data.B_sup_theta_pest
-
-    flux_surface_average_weights = (
-        np.abs(jacobian) / np.abs(jacobian).mean(axis=(1, 2))[:, np.newaxis, np.newaxis]
-    )
-
-    grad_r_dot_grad_r = (
-        minor_radius**2
-        / (4 * settings.normalized_toroidal_flux[:, None, None])
-        * data.grad_s_dot_grad_s
-    )
-
-    edge_toroidal_flux = equilibrium.phipf[-1]
-    toroidal_flux_sign = np.sign(edge_toroidal_flux)
-    curvature_drift_tilde = data.B_cross_kappa_dot_grad_alpha * toroidal_flux_sign
-
-    flux_compression_in_regions_of_bad_curvature = (
-        np.heaviside(curvature_drift_tilde, 0) * grad_r_dot_grad_r
-    )
-    return np.mean(
-        flux_compression_in_regions_of_bad_curvature * flux_surface_average_weights,
-        axis=(1, 2),
-    )
-
-
-def _set_up_surface_grid(
-    n_field_periods: int,
-    is_stellarator_symmetric: bool,
-    settings: IdealMHDTurbulentTransportMetricsSettings,  # noqa: E501
-) -> tuple[
-    jt.Float[np.ndarray, " n_field_lines"], jt.Float[np.ndarray, " n_toroidal_points"]
-]:
-    """Sets up the grid as it is done in STELLOPT.
-
-    See: https://github.com/PrincetonUniversity/STELLOPT/blob/develop/STELLOPTV2/Sources/General/stellopt_txport.f90#L258
-    """
-    alpha_start = -(2.0 * np.pi) / n_field_periods / (1 + int(is_stellarator_symmetric))
-    alpha_end = (2.0 * np.pi) / n_field_periods / (1 + int(is_stellarator_symmetric))
-    alpha = np.linspace(alpha_start, alpha_end, settings.n_field_lines, endpoint=False)
-    theta = np.linspace(-np.pi, np.pi, settings.n_toroidal_points, endpoint=False)
-    return alpha, theta
+    """Evaluate the historical hard-mask metric using JAX field lines."""
+    if equilibrium.lasym:
+        raise NotImplementedError(
+            "Only stellarator-symmetric field lines are supported"
+        )
+    with enable_x64(True):
+        wout = {key: jnp.asarray(getattr(equilibrium, key)) for key in _FIELDS}
+        modes = {key: jnp.asarray(getattr(equilibrium, key)) for key in _MODES}
+        return float(
+            _reporting_kernel(
+                wout,
+                modes,
+                settings.normalized_toroidal_flux,
+                equilibrium.nfp,
+                settings.n_field_lines,
+                settings.n_toroidal_points,
+                smoothing=0.0,
+            ).mean()
+        )
