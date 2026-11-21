@@ -1,6 +1,5 @@
 import pathlib
 
-import booz_xform
 import matplotlib as mpl
 import matplotlib.figure as mpl_figure
 import matplotlib.pyplot as plt
@@ -8,7 +7,6 @@ import numpy as np
 from matplotlib import axes
 from plotly import graph_objects as go
 from scipy import interpolate
-from simsopt import mhd
 
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import surface_rz_fourier, surface_utils
@@ -107,23 +105,22 @@ def plot_boozer_surfaces(
     """Creates Boozer surface plots."""
     if settings is None:
         settings = boozer_module.BoozerSettings()
-    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
-    boozer = mhd.Boozer(
-        equil=vmec,
-        mpol=settings.n_poloidal_modes,
-        ntor=settings.max_toroidal_mode,
-        verbose=settings.verbose,
-    )
-    if settings.normalized_toroidal_flux is not None:
-        boozer.register(settings.normalized_toroidal_flux)
-
-    boozer.run()
+    spectrum = boozer_module.run_boozer(equilibrium, settings)
+    theta = np.linspace(0, 2 * np.pi, 50)
+    phi = np.linspace(0, 2 * np.pi / spectrum.n_field_periods, 90)
+    phase = spectrum.xm_b * theta[:, None, None] - spectrum.xn_b * phi[None, :, None]
+    field = np.cos(phase) @ spectrum.bmnc_b
+    if not spectrum.is_stellarator_symmetric:
+        field += np.sin(phase) @ spectrum.bmns_b
 
     figures = []
-    for js in range(len(boozer.bx.compute_surfs)):
-        plt.figure()
-        booz_xform.surfplot(b=boozer.bx, js=js, fill=False)
-        fig = plt.gcf()
+    for js, s in enumerate(spectrum.boozer_normalized_toroidal_flux):
+        fig, ax = plt.subplots()
+        cs = ax.contour(phi, theta, field[:, :, js], levels=25)
+        fig.colorbar(cs, ax=ax)
+        ax.set_xlabel(r"Boozer toroidal angle $\varphi$")
+        ax.set_ylabel(r"Boozer poloidal angle $\theta$")
+        ax.set_title(f"|B| on surface s={s:.4f}")
         figures.append(fig)
 
     if save_dir_path is not None:

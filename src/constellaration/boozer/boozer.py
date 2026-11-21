@@ -1,7 +1,17 @@
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any, NamedTuple
+
+import jax
+import jax.numpy as jnp
 import jaxtyping as jt
 import numpy as np
 import pydantic
-from simsopt import mhd
+from booz_xform_jax.jax_api import (
+    BoozerConfig,
+    booz_xform_jax_impl,
+    prepare_booz_xform_plan,
+)
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
 from constellaration.mhd import vmec_utils
 
@@ -233,71 +243,170 @@ class BoozerPresetSettings(pydantic.BaseModel):
     """If True, runs booz_xform in verbose mode."""
 
 
+class BoozerSpectrum(NamedTuple):
+    """Selected half-grid surfaces. Spectra are indexed (Fourier mode, surface)."""
+
+    xm_b: jax.Array
+    xn_b: jax.Array
+    s: jax.Array
+    iota: jax.Array
+    bmnc_b: jax.Array
+    bmns_b: jax.Array | None
+
+
+def make_transform(
+    modes: Mapping[str, jax.typing.ArrayLike],
+    *,
+    nfp: int,
+    ns: int,
+    mboz: int,
+    nboz: int,
+    surfaces: Sequence[float] | None,
+    asym: bool = False,
+    magnetic_only: bool = False,
+) -> Callable[[Mapping[str, jax.Array]], tuple[BoozerSpectrum, dict]]:
+    """Prepare a JAX transform for VMEC output at a fixed resolution.
+
+    This adapter converts VMEC's full-grid geometry to Boozer's half-grid
+    inputs and prepares the quadrature and surface selection outside tracing.
+    """
+    mode_arrays = {
+        name: jnp.asarray(modes[name]) for name in ("xm", "xn", "xm_nyq", "xn_nyq")
+    }
+    plan = prepare_booz_xform_plan(
+        nfp=nfp,
+        asym=asym,
+        xm=np.asarray(modes["xm"]).tolist(),
+        xn=np.asarray(modes["xn"]).tolist(),
+        xm_nyq=np.asarray(modes["xm_nyq"]).tolist(),
+        xn_nyq=np.asarray(modes["xn_nyq"]).tolist(),
+        config=BoozerConfig(mboz=mboz, nboz=nboz, trig_f32=False),
+    )
+    s_full = np.linspace(0, 1, ns)
+    s_half = (s_full[1:] + s_full[:-1]) / 2
+    selected = (
+        np.arange(ns - 1)
+        if surfaces is None
+        else np.unique([np.argmin(np.abs(s_half - s)) for s in surfaces])
+    )
+    s = jnp.asarray(s_half[selected])
+    indices = jnp.asarray(selected)
+    rho = jnp.asarray(np.sqrt(s_full)).at[0].set(1)
+    rho_half = jnp.asarray(np.sqrt(s_half))
+    odd = mode_arrays["xm"] % 2 != 0
+
+    def half_geometry(coefficients):
+        c = jnp.asarray(coefficients).T
+        regular = c / rho[:, None]
+        mean = (c[:-1] + c[1:]) / 2
+        odd_mean = (regular[:-1] + regular[1:]) * (rho_half[:, None] / 2)
+        half = jnp.where(odd, odd_mean, mean)
+        # VMEC's m=1 coefficients are linear in rho at the axis; extrapolate
+        # c/rho using the two first interior points, as in BOOZ_XFORM.
+        first = rho_half[0] * (1.5 * regular[1] - 0.5 * regular[2])
+        return half.at[0].set(jnp.where(mode_arrays["xm"] == 1, first, half[0]))
+
+    def transform(wout):
+        fields: dict[str, Any] = {
+            name: half_geometry(wout[name]) for name in ("rmnc", "zmns")
+        }
+        half_names = ["lmns", "bmnc", "bsubumnc", "bsubvmnc"]
+        if asym:
+            fields.update(
+                {name: half_geometry(wout[name]) for name in ("rmns", "zmnc")}
+            )
+            half_names += ["lmnc", "bmns", "bsubumns", "bsubvmns"]
+        fields.update({name: jnp.asarray(wout[name]).T[1:] for name in half_names})
+        out = booz_xform_jax_impl(
+            **fields,
+            iota=jnp.asarray(wout["iotas"])[1:],
+            xm=mode_arrays["xm"],
+            xn=mode_arrays["xn"],
+            xm_nyq=mode_arrays["xm_nyq"],
+            xn_nyq=mode_arrays["xn_nyq"],
+            constants=plan.constants,
+            grids=plan.grids,
+            surface_indices=indices,
+            plan=plan,
+            magnetic_only=magnetic_only,
+        )
+        return (
+            BoozerSpectrum(
+                out["ixm_b"],
+                out["ixn_b"],
+                s,
+                out["iota_b"],
+                out["bmnc_b"].T,
+                out["bmns_b"].T if asym else None,
+            ),
+            out if magnetic_only else {**out, **fields},
+        )
+
+    return transform
+
+
 def run_boozer(
     equilibrium: vmec_utils.VmecppWOut,
     settings: BoozerSettings,
 ) -> BoozerOutput:
-    vmec = vmec_utils.as_simsopt_vmec(equilibrium)
-    boozer = mhd.Boozer(
-        equil=vmec,
-        mpol=settings.n_poloidal_modes,
-        ntor=settings.max_toroidal_mode,
-        verbose=settings.verbose,
-    )
-    if settings.normalized_toroidal_flux is not None:
-        boozer.register(settings.normalized_toroidal_flux)
-
-    boozer.run()
-
+    """Transform a reporting wout using the same JAX kernel as optimization."""
+    w = equilibrium
+    keys = ("xm", "xn", "xm_nyq", "xn_nyq")
+    modes = {name: np.asarray(getattr(w, name)) for name in keys}
+    input_names = ("rmnc", "zmns", "lmns", "bmnc", "bsubumnc", "bsubvmnc")
+    asym_names = ("rmns", "zmnc", "lmnc", "bmns", "bsubumns", "bsubvmns")
+    fields = {
+        name: getattr(w, name)
+        for name in (*input_names, *(asym_names if w.lasym else ()), "iotas")
+    }
+    with enable_x64(True):
+        transform = make_transform(
+            modes,
+            nfp=w.nfp,
+            ns=w.ns,
+            mboz=settings.n_poloidal_modes,
+            nboz=settings.max_toroidal_mode,
+            surfaces=settings.normalized_toroidal_flux,
+            asym=w.lasym,
+        )
+        spectrum, output = transform(fields)
+    empty = np.empty((0, 0))
+    symmetric = ("bmnc_b", "gmnc_b", "rmnc_b", "zmns_b", "numns_b")
+    asymmetric = ("bmns_b", "gmns_b", "rmns_b", "zmnc_b", "numnc_b")
     return BoozerOutput(
-        is_stellarator_symmetric=not boozer.bx.asym,
-        n_field_periods=boozer.bx.nfp,
-        xm_b=boozer.bx.xm_b,
-        xn_b=boozer.bx.xn_b,
-        boozer_normalized_toroidal_flux=boozer.bx.s_b,
-        normalized_toroidal_flux=boozer.bx.s_in,
-        boozer_flux_surface_indices=boozer.bx.compute_surfs,
-        aspect=boozer.bx.aspect,
-        n_boozer_poloidal_modes=boozer.bx.mboz,
-        max_boozer_toroidal_mode=boozer.bx.nboz,
-        n_poloidal_modes=boozer.bx.mpol,
-        max_toroidal_mode=boozer.bx.ntor,
-        n_nyquist_poloidal_modes=boozer.bx.mpol_nyq,
-        max_nyquist_toroidal_mode=boozer.bx.ntor_nyq,
-        toroidal_flux=boozer.bx.toroidal_flux,
-        xm=boozer.bx.xm,
-        xm_nyq=boozer.bx.xm_nyq,
-        xn=boozer.bx.xn,
-        xn_nyq=boozer.bx.xn_nyq,
-        phi=boozer.bx.phi,
-        phip=boozer.bx.phip,
-        G=boozer.bx.Boozer_G,
-        I=boozer.bx.Boozer_I,
-        G_all_flux_surfaces=boozer.bx.Boozer_G_all,
-        I_all_flux_surfaces=boozer.bx.Boozer_I_all,
-        iota=boozer.bx.iota,
-        bmnc_b=boozer.bx.bmnc_b,
-        bmns_b=boozer.bx.bmns_b,
-        gmnc_b=boozer.bx.gmnc_b,
-        gmns_b=boozer.bx.gmns_b,
-        rmnc_b=boozer.bx.rmnc_b,
-        rmns_b=boozer.bx.rmns_b,
-        zmns_b=boozer.bx.zmns_b,
-        zmnc_b=boozer.bx.zmnc_b,
-        bmnc=boozer.bx.bmnc,
-        bmns=boozer.bx.bmns,
-        bsubumnc=boozer.bx.bsubumnc,
-        bsubumns=boozer.bx.bsubumns,
-        bsubvmnc=boozer.bx.bsubvmnc,
-        bsubvmns=boozer.bx.bsubvmns,
-        numnc_b=boozer.bx.numnc_b,
-        numns_b=boozer.bx.numns_b,
-        rmnc=boozer.bx.rmnc,
-        rmns=boozer.bx.rmns,
-        zmnc=boozer.bx.zmnc,
-        zmns=boozer.bx.zmns,
-        lmnc=boozer.bx.lmnc,
-        lmns=boozer.bx.lmns,
+        is_stellarator_symmetric=not w.lasym,
+        n_field_periods=w.nfp,
+        xm_b=np.asarray(spectrum.xm_b),
+        xn_b=np.asarray(spectrum.xn_b),
+        boozer_normalized_toroidal_flux=np.asarray(spectrum.s),
+        normalized_toroidal_flux=w.normalized_toroidal_flux_half_grid_mesh[1:],
+        boozer_flux_surface_indices=(np.asarray(output["jlist"]) - 2).tolist(),
+        aspect=float(w.aspect),
+        n_boozer_poloidal_modes=settings.n_poloidal_modes,
+        max_boozer_toroidal_mode=settings.max_toroidal_mode,
+        n_poloidal_modes=w.mpol,
+        max_toroidal_mode=w.ntor,
+        n_nyquist_poloidal_modes=int(modes["xm_nyq"].max()),
+        max_nyquist_toroidal_mode=int(modes["xn_nyq"].max() // w.nfp),
+        toroidal_flux=float(w.phi[-1]),
+        **modes,
+        phi=np.asarray(w.phi),
+        phip=np.asarray(w.phipf),
+        G=np.asarray(output["bvco_b"]),
+        I=np.asarray(output["buco_b"]),
+        G_all_flux_surfaces=np.asarray(w.bsubvmnc[0, 1:]),
+        I_all_flux_surfaces=np.asarray(w.bsubumnc[0, 1:]),
+        iota=np.asarray(w.iotas[1:]),
+        **{name: np.asarray(output[name]).T for name in symmetric},
+        **{
+            name: np.asarray(output[name]).T if w.lasym else empty
+            for name in asymmetric
+        },
+        **{name: np.asarray(output[name]).T for name in input_names},
+        **{
+            name: np.asarray(output[name]).T if w.lasym else empty
+            for name in asym_names
+        },
     )
 
 
