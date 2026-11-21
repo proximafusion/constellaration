@@ -36,7 +36,7 @@ def minimum_normalized_mercier_criterion(
     return -temperature * float(np.asarray(logsumexp(-values / temperature)).item())
 
 
-def mirror_ratio_well(axis: float, edge: float) -> float | None:
+def mirror_ratio_well(axis: float, edge: float) -> float:
     r"""Return the unsigned normalized difference of edge and axis mirror ratios.
 
     The metric :math:`2|M_\mathrm{edge}-M_\mathrm{axis}|/
@@ -51,25 +51,13 @@ def mirror_ratio_well(axis: float, edge: float) -> float | None:
         edge: Magnetic mirror ratio at the plasma edge.
 
     Returns:
-        The dimensionless well, or None if the denominator is nonfinite or
+        The dimensionless well, or infinity if the denominator is nonfinite or
         no larger than 1e-14.
     """
     denominator = axis + edge
     if not np.isfinite(denominator) or denominator <= 1e-14:
-        return None
+        return float(np.inf)
     return float(2 * abs(edge - axis) / denominator)
-
-
-def volume_averaged_beta(equilibrium: vmec_utils.VmecppWOut) -> float:
-    """Return VMEC's dimensionless volume-averaged beta, `betatotal`.
-
-    Args:
-        equilibrium: VMEC equilibrium supplying `betatotal`.
-
-    Returns:
-        VMEC's total beta as a fraction, not a percentage.
-    """
-    return float(equilibrium.betatotal)
 
 
 def beta_peaking_factor(equilibrium: vmec_utils.VmecppWOut) -> float | None:
@@ -87,7 +75,7 @@ def beta_peaking_factor(equilibrium: vmec_utils.VmecppWOut) -> float | None:
         The dimensionless ratio, or None for nonpositive or nonfinite total
         beta, fewer than two physical half-grid values, or nonfinite axis beta.
     """
-    beta = volume_averaged_beta(equilibrium)
+    beta = float(equilibrium.betatotal)
     profile = np.asarray(equilibrium.beta_vol)
     if not np.isfinite(beta) or beta <= 0 or len(profile) < 3:
         return None

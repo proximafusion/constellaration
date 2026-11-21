@@ -224,7 +224,7 @@ def forward_model(
         magnetic_mirror_ratio_well=magnetics_utils.mirror_ratio_well(
             axis_magnetic_mirror_ratio, edge_magnetic_mirror_ratio
         ),
-        volume_averaged_beta=magnetics_utils.volume_averaged_beta(equilibrium),
+        volume_averaged_beta=float(equilibrium.betatotal),
         beta_peaking_factor=magnetics_utils.beta_peaking_factor(equilibrium),
         aspect_ratio=float(equilibrium.aspect),
         aspect_ratio_over_edge_rotational_transform=float(equilibrium.aspect)

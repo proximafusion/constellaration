@@ -27,14 +27,12 @@ def test_mercier_softmin():
 
 def test_mirror_and_beta():
     assert magnetics_utils.mirror_ratio_well(0.1, 0.11) == pytest.approx(2 / 21)
-    assert magnetics_utils.mirror_ratio_well(0, 0) is None
+    assert np.isinf(magnetics_utils.mirror_ratio_well(0, 0))
     equilibrium = vmec_utils.VmecppWOut.model_construct(
         betatotal=0.03, beta_vol=np.array([0.0, 0.09, 0.07])
     )
-    assert magnetics_utils.volume_averaged_beta(equilibrium) == pytest.approx(0.03)
     assert magnetics_utils.beta_peaking_factor(equilibrium) == pytest.approx(10 / 3)
     equilibrium.betatotal = 0
-    assert magnetics_utils.volume_averaged_beta(equilibrium) == 0
     assert magnetics_utils.beta_peaking_factor(equilibrium) is None
     equilibrium.betatotal = 0.03
     equilibrium.beta_vol = np.array([0.0, 0.09])
