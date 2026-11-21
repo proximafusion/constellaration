@@ -111,6 +111,9 @@ def test_reference_metrics(name):
     # Continuous section quadrature replaces the legacy polygon fit.
     key = "max_elongation"
     assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), rel=0.045)
+    # Local cubic interpolation and a smooth mask replace the legacy hard mask.
+    key = "flux_compression_in_regions_of_bad_curvature"
+    assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), abs=0.003)
     assert actual_values == pytest.approx(expected_values, rel=3e-5, abs=1e-8)
 
 
