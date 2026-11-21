@@ -108,6 +108,9 @@ def test_reference_metrics(name):
     # now refined between quadrature points rather than rounded to the grid.
     key = "average_triangularity"
     assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), abs=0.03)
+    # Continuous section quadrature replaces the legacy polygon fit.
+    key = "max_elongation"
+    assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), rel=0.045)
     assert actual_values == pytest.approx(expected_values, rel=3e-5, abs=1e-8)
 
 
