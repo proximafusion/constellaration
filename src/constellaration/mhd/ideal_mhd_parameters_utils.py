@@ -10,9 +10,9 @@ from constellaration.mhd import (
     flux_power_series,
     ideal_mhd_parameters,
     pressure_profile,
-    vmec_utils,
 )
 from constellaration.mhd import vmec_settings as vmec_settings_module
+from constellaration.mhd import vmec_utils
 
 if TYPE_CHECKING:
     from constellaration import problems
@@ -26,8 +26,9 @@ def design_to_ideal_mhd_parameters(
     With pressure=None, use the fixed profile p(s) = 1 Pa * (1 - s) and
     edge flux pi * a**2 * 1 T, with a the boundary minor radius.
 
-    For an explicit pressure profile, estimate the edge flux from :math:`\Phi=\pi a^2 [B_0 +
-    \mu_0(p_0-\bar p)/B_0]`, with :math:`B_0=1\,\mathrm{T}` and :math:`a`
+    For an explicit pressure profile, estimate the edge flux from
+    :math:`\Phi=\pi a^2 [B_0 + \mu_0(p_0-\bar p)/B_0]`, with
+    :math:`B_0=1\,\mathrm{T}` and :math:`a`
     the boundary minor radius. This is the first-order pressure correction to
     cylindrical force balance :math:`B(s)^2+2\mu_0p(s)=B_0^2+2\mu_0p_0`,
     treating uniform-s pressure averaging as an area average. It is a heuristic,

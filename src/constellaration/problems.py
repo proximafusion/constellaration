@@ -388,10 +388,7 @@ class MaximumBetaQIStellarator(_FiniteBetaQIStellarator):
         violations = self._normalized_constraint_violations(metrics)
         aspect, _, _, _, _, mercier, mirror_well = violations
         return bool(
-            np.all(violations <= 0)
-            and aspect < 0
-            and mercier < 0
-            and mirror_well < 0
+            np.all(violations <= 0) and aspect < 0 and mercier < 0 and mirror_well < 0
         )
 
     def get_objective(
