@@ -1,6 +1,7 @@
 import jax.tree_util as jtu
 import numpy as np
 import pydantic
+import pytest
 from vmecpp import _pydantic_numpy as pydantic_numpy
 
 from constellaration.utils import pytree, types
@@ -21,6 +22,16 @@ class MyOtherData(pydantic_numpy.BaseModelWithNumpy):
 
 pytree.register_pydantic_data(MyData, meta_fields=["b"])
 pytree.register_pydantic_data(MyOtherData)
+
+
+def test_repeated_registration() -> None:
+    assert pytree.register_pydantic_data(MyData, meta_fields=["b"]) is MyData
+    assert pytree.register_pydantic_data(MyOtherData, meta_fields=[]) is MyOtherData
+    with pytest.raises(ValueError, match="different metadata"):
+        pytree.register_pydantic_data(MyData, meta_fields=["a"])
+    # Conflicting metadata must not change the original registration.
+    data = MyData(a="a", b=1, c=2.3)
+    assert jtu.tree_leaves(data) == ["a", 2.3]
 
 
 def test_flatten() -> None:

@@ -51,7 +51,7 @@ def main():
         n_field_periods=3,
     )
 
-    runner.run(boundary, OPTIMIZATION_SETTINGS, problem)
+    runner.run(problems.Design(boundary=boundary), OPTIMIZATION_SETTINGS, problem)
 
 
 if __name__ == "__main__":
