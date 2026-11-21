@@ -117,6 +117,14 @@ def forward_model(
         vmec_settings=vmec_settings,
     )
 
+    return metrics_from_equilibrium(equilibrium, settings), equilibrium
+
+
+def metrics_from_equilibrium(
+    equilibrium: vmec_utils.VmecppWOut,
+    settings: ConstellarationSettings,
+) -> ConstellarationMetrics:
+    """Evaluate reporting metrics for an already solved equilibrium."""
     # Geometrical metrics
     (
         n_poloidal_points,
@@ -132,8 +140,8 @@ def forward_model(
         n_toroidal_points=n_toroidal_points,
     )
 
-    average_triangularity = geometry_utils.average_triangularity(
-        surface=boundary,
+    average_triangularity = geometry_utils.equilibrium_average_triangularity(
+        equilibrium
     )
 
     # Magnetic metrics
@@ -243,4 +251,4 @@ def forward_model(
         flux_compression_in_regions_of_bad_curvature=flux_compression_in_regions_of_bad_curvature,
     )
 
-    return metrics, equilibrium
+    return metrics
