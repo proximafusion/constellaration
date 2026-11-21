@@ -111,6 +111,9 @@ def test_reference_metrics(name):
     # Continuous section quadrature replaces the legacy polygon fit.
     key = "max_elongation"
     assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), rel=0.045)
+    # Smooth bounce crossings and nested shuffling replace the hard QI contours.
+    key = "qi"
+    assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), rel=0.004)
     # Local cubic interpolation and a smooth mask replace the legacy hard mask.
     key = "flux_compression_in_regions_of_bad_curvature"
     assert actual_values.pop(key) == pytest.approx(expected_values.pop(key), abs=0.003)

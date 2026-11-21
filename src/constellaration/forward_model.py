@@ -182,24 +182,19 @@ def _metrics_from_equilibrium(
         * equilibrium.n_field_periods
     )
 
-    # QI metrics
+    # QI only needs the magnetic spectrum on the selected half-grid surfaces.
+    qi_residuals = None
     if settings.qi_settings is not None and settings.boozer_preset_settings is not None:
-        boozer_settings = (
-            boozer_module.create_boozer_settings_from_equilibrium_resolution(
-                mhd_equilibrium=equilibrium, settings=settings.boozer_preset_settings
-            )
+        transform = _prepare_boozer_transform(
+            equilibrium, settings.boozer_preset_settings
         )
-        boozer = boozer_module.run_boozer(
-            equilibrium=equilibrium,
-            settings=boozer_settings,
+        spectrum, _ = transform(_boozer_fields(equilibrium))
+        qi_residuals = qi.quasi_isodynamicity_residual(
+            spectrum,
+            equilibrium.nfp,
+            settings.qi_settings,
+            equilibrium.bmnc[1, 1] if equilibrium.ntor else 0.0,
         )
-        qi_metrics = qi.quasi_isodynamicity_residual(
-            boozer=boozer,
-            settings=settings.qi_settings,
-        )
-        qi_residuals = float(np.sum(qi_metrics.residuals**2))
-    else:
-        qi_residuals = None
 
     if settings.turbulent_settings is not None:
         flux_compression_in_regions_of_bad_curvature = (
@@ -238,3 +233,22 @@ def _metrics_from_equilibrium(
     )
 
     return metrics
+
+
+def _prepare_boozer_transform(equilibrium, settings):
+    return boozer_module.make_transform(
+        {key: getattr(equilibrium, key) for key in ("xm", "xn", "xm_nyq", "xn_nyq")},
+        nfp=equilibrium.nfp,
+        ns=equilibrium.ns,
+        mboz=max(6 * equilibrium.mpol, 2),
+        nboz=max(2 * equilibrium.ntor - 1, 0),
+        surfaces=settings.normalized_toroidal_flux,
+        magnetic_only=True,
+    )
+
+
+def _boozer_fields(equilibrium):
+    return {
+        key: getattr(equilibrium, key)
+        for key in ("iotas", "rmnc", "zmns", "lmns", "bmnc", "bsubumnc", "bsubvmnc")
+    }
