@@ -1,8 +1,9 @@
 import numpy as np
 import pydantic
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
 from constellaration.boozer import boozer as boozer_module
-from constellaration.geometry import radial_profile, surface_rz_fourier, surface_utils
+from constellaration.geometry import surface_rz_fourier, surface_utils
 from constellaration.mhd import geometry_utils
 from constellaration.mhd import ideal_mhd_parameters as ideal_mhd_parameters_module
 from constellaration.mhd import magnetics_utils, turbulent_transport
@@ -125,6 +126,13 @@ def metrics_from_equilibrium(
     settings: ConstellarationSettings,
 ) -> ConstellarationMetrics:
     """Evaluate reporting metrics for an already solved equilibrium."""
+    with enable_x64(True):
+        return _metrics_from_equilibrium(equilibrium, settings)
+
+
+def _metrics_from_equilibrium(
+    equilibrium: vmec_utils.VmecppWOut, settings: ConstellarationSettings
+) -> ConstellarationMetrics:
     # Geometrical metrics
     (
         n_poloidal_points,
@@ -145,33 +153,11 @@ def metrics_from_equilibrium(
     )
 
     # Magnetic metrics
-    normalized_effective_radius_on_full_grid_mesh = np.sqrt(
-        equilibrium.normalized_toroidal_flux_full_grid_mesh
-    )
-    iota = radial_profile.InterpolatedRadialProfile(
-        rho=normalized_effective_radius_on_full_grid_mesh,
-        values=np.asarray(equilibrium.iotaf),
-    )
-    axis_rotational_transform = float(
-        radial_profile.evaluate_at_normalized_effective_radius(iota, np.array([0.0]))
-    )
-    edge_rotational_transform = float(
-        radial_profile.evaluate_at_normalized_effective_radius(iota, np.array([1.0]))
-    )
-
+    axis_rotational_transform = equilibrium.iotaf[0]
+    edge_rotational_transform = equilibrium.iotaf[-1]
     vacuum_well = magnetics_utils.vacuum_well(equilibrium)
-
-    magnetic_mirror_ratio = magnetics_utils.magnetic_mirror_ratio(equilibrium)
-    axis_magnetic_mirror_ratio = float(
-        radial_profile.evaluate_at_normalized_effective_radius(
-            magnetic_mirror_ratio, np.array([0.0])
-        )
-    )
-    edge_magnetic_mirror_ratio = float(
-        radial_profile.evaluate_at_normalized_effective_radius(
-            magnetic_mirror_ratio, np.array([1.0])
-        )
-    )
+    mirror = magnetics_utils.magnetic_mirror_ratio(equilibrium).values
+    axis_magnetic_mirror_ratio, edge_magnetic_mirror_ratio = mirror[0], mirror[-1]
 
     phi_upper_bound = (
         2 * np.pi / equilibrium.n_field_periods / (1 + int(not equilibrium.lasym))
