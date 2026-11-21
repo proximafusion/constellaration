@@ -1,15 +1,12 @@
 import base64
 import enum
 import io
-import pathlib
-import tempfile
 
 import jaxtyping as jt
 import numpy as np
 import pydantic
 import vmecpp
 from scipy import interpolate
-from simsopt import mhd
 
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import flux_power_series, ideal_mhd_parameters, vmec_settings
@@ -410,19 +407,6 @@ def vmecppwout_from_wout(
     wout: vmecpp.VmecWOut,
 ) -> VmecppWOut:
     return VmecppWOut.model_validate(wout, from_attributes=True)
-
-
-def as_simsopt_vmec(equilibrium: VmecppWOut) -> mhd.Vmec:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmpdir = pathlib.Path(tmpdir)
-        wout_path = tmpdir / "wout_temp.nc"
-        extras = None
-        if equilibrium.model_extra is not None:
-            extras = set(equilibrium.model_extra.keys())
-        VmecppWOut.model_validate(equilibrium.model_dump(exclude=extras)).save(
-            wout_path,
-        )
-        return mhd.Vmec(wout_path.as_posix())
 
 
 # TODO(mariap): Remove this class
