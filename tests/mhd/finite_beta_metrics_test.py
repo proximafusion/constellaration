@@ -15,7 +15,8 @@ def test_mercier_softmin():
     assert value == pytest.approx(8, abs=1e-10)
     equilibrium.DMerc[1] = -1
     value = magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 1e-3)
-    assert value is not None and value < 0
+    assert value is not None
+    assert value < 0
     equilibrium.DMerc[1] = np.nan
     assert (
         magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 1e-3) is None
@@ -62,4 +63,5 @@ def test_metrics_from_real_vmec():
     )
     interior = wout.DMerc[1:-1] * wout.phi[-1] ** 2
     value = metrics.minimum_normalized_mercier_criterion
-    assert value is not None and value <= np.min(interior)
+    assert value is not None
+    assert value <= np.min(interior)

@@ -3,14 +3,11 @@ import pydantic
 
 from constellaration.boozer import boozer as boozer_module
 from constellaration.geometry import radial_profile, surface_rz_fourier, surface_utils
-from constellaration.mhd import (
-    geometry_utils,
-    magnetics_utils,
-    turbulent_transport,
-    vmec_utils,
-)
+from constellaration.mhd import geometry_utils
 from constellaration.mhd import ideal_mhd_parameters as ideal_mhd_parameters_module
+from constellaration.mhd import magnetics_utils, turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
+from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
 
 
