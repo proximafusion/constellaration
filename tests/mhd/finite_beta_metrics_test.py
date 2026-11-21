@@ -10,6 +10,7 @@ from constellaration.mhd import ideal_mhd_parameters, magnetics_utils, vmec_util
 from tests.equilibrium_reference_test import NAMES, REFERENCES
 from tests.utils.vmec_utils_test import (
     assert_directional_derivative,
+    grid,
     pinned_case,
     resolved_case,
 )
@@ -129,6 +130,42 @@ def test_magnetic_gradients():
                     mpol=template.mpol,
                     ntor=template.ntor,
                 )
+            )
+
+        assert_directional_derivative(metric)
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_gradient_length_value(name):
+    with vmecpp.enable_x64(True):
+        equilibrium = vmec_utils.VmecppWOut.model_construct(**pinned_case(name)[2])
+        theta, phi = grid(equilibrium.mpol, equilibrium.ntor, equilibrium.nfp)
+        actual = (
+            magnetics_utils.normalized_magnetic_gradient_scale_length(
+                equilibrium, jnp.stack((theta, phi), axis=-1)
+            ).min()
+            * equilibrium.nfp
+        )
+    expected = json.loads((REFERENCES / name / "metrics.json").read_text())
+    np.testing.assert_allclose(
+        actual, expected["minimum_normalized_magnetic_gradient_scale_length"], rtol=1e-9
+    )
+
+
+def test_gradient_length_derivative():
+    with resolved_case() as (template, family, modes):
+        theta, phi = grid(template.mpol, template.ntor, template.nfp)
+
+        def metric(t):
+            _, out = family(t)
+            return (
+                magnetics_utils.normalized_magnetic_gradient_scale_length(
+                    vmec_utils.VmecppWOut.model_construct(
+                        _fields_set=None, **out, **modes
+                    ),
+                    jnp.stack((theta, phi), axis=-1),
+                ).min()
+                * template.nfp
             )
 
         assert_directional_derivative(metric)
