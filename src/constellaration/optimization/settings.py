@@ -32,6 +32,14 @@ class NevergradSettings(pydantic.BaseModel):
     """
 
 
+class LBFGSBSettings(pydantic.BaseModel):
+    """Settings for a float64 L-BFGS-B AL subproblem with an exact JAX gradient."""
+
+    maxiter: pydantic.PositiveInt = 20
+    maxfun: pydantic.PositiveInt = 50
+    gtol: pydantic.PositiveFloat = 1e-6
+
+
 class AugmentedLagrangianMethodSettings(pydantic.BaseModel):
     """Settings for the augmented Lagrangian optimization method."""
 
@@ -49,8 +57,8 @@ class AugmentedLagrangianMethodSettings(pydantic.BaseModel):
     """Settings specific to the internal augmented Lagrangian solver
     (e.g., tolerances, stopping criteria)."""
 
-    oracle_settings: NevergradSettings
-    """Settings for the oracle optimizer (e.g., Nevergrad) used to solve subproblems."""
+    oracle_settings: NevergradSettings | LBFGSBSettings
+    """Inner optimizer used to solve the bounded AL subproblems."""
 
 
 class ScipyMinimizeSettings(pydantic.BaseModel):
