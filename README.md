@@ -151,6 +151,42 @@ pytest .
 
 The optimization baseline can be executed by running the individual files within the folder `optimization_examples`.
 
+### Differentiable equilibrium optimization
+
+Run a small fixed-boundary VMEC++ example with the augmented Lagrangian method
+and L-BFGS-B:
+
+```bash
+python -m optimization_examples.launch_alm_lbfgsb
+```
+
+Set `oracle_settings=LBFGSBSettings(...)` in `AugmentedLagrangianMethodSettings`
+to use JAX gradients. `NevergradSettings` remains available in the same runner.
+Both use the same design coordinates, bounds and multiplier updates. The two
+finite-beta problems also optimize log axis pressure and Bernstein-profile logits.
+The example prints the elongation before and after optimization and the positive
+constraint violations; it is not a demonstration of a feasible design.
+
+For direct differentiation, enable JAX float64 and create a callable with
+`constellaration.differentiable_forward_model.make_forward_model(design, settings)`.
+It freezes the Fourier resolution, radial grid and quadrature, then accepts a
+`Design` PyTree inside `jax.jit` and `jax.grad`. Use the same field periods, mode
+layout and pressure-profile degree as the reference design. For precise validation,
+set an explicit `ConstellarationSettings.vmec_settings` with tight force tolerance.
+The exact VMEC++ adjoint requires an Enzyme-enabled build (the VMEC++ 0.9.3 Linux
+wheel includes it). The JAX path is limited to fixed-boundary, stellarator-symmetric,
+zero-net-current equilibria with a power-series pressure profile. Unconverged solves
+and nonfinite AL subproblems raise rather than returning a constant penalty.
+
+Reporting and optimization use the same metrics: a continuous triangularity
+maximum, periodic quadrature for axis-normal elongation, a smooth bad-curvature
+mask, and smooth bounce crossings and nested shuffling for the Goodman QI
+residual. Field lines use local cubic interpolation instead of SIMSOPT's global
+splines. The three reference cases in `tests/metrics_references` quantify these
+value differences. Directional gradients are tested against float64 equilibria
+re-solved at two central-difference step sizes. Grid extrema, contour knots and ties
+can still be nonsmooth; the tests check local derivatives, not global smoothness.
+
 ## Citation
 
 ```
