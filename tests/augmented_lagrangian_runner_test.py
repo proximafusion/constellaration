@@ -168,11 +168,12 @@ def test_finite_beta_objective_constraints(
         problem,
         lambda _: candidate,
         settings.forward_model_settings,
-        None,
     )
     assert objective == pytest.approx(expected_objective)
     assert actual_metrics == metrics
     assert len(constraints) == count
+    if isinstance(problem, problems.MHDStableQIStellarator):
+        assert constraints[0] == pytest.approx(metrics.aspect_ratio - 10)
     np.testing.assert_allclose(
         constraints,
         problem._normalized_constraint_violations(metrics),
@@ -189,7 +190,6 @@ def test_finite_beta_objective_constraints(
         problem,
         lambda _: candidate,
         settings.forward_model_settings,
-        None,
     )
     assert actual_metrics is None
     assert objective == runner.NAN_TO_HIGH_VALUE
@@ -203,7 +203,6 @@ def test_finite_beta_objective_constraints(
         problem,
         lambda _: candidate,
         settings.forward_model_settings,
-        None,
     )
     assert actual_metrics is None
     assert objective == runner.NAN_TO_HIGH_VALUE
@@ -289,17 +288,22 @@ def test_boundary_only_runner(
 
     monkeypatch.setattr(forward_model, "forward_model", evaluate)
     monkeypatch.setattr(runner.futures, "ProcessPoolExecutor", _thread_pool)
-    problem = problem_type()
+    problem = (
+        problem_type(aspect_ratio_upper_bound=10)
+        if problem_type is problems.MHDStableQIStellarator
+        else problem_type()
+    )
     (actual, constraints), _ = runner.objective_constraints(
         jnp.zeros(1),
         jnp.ones(1),
         problem,
         lambda _: design,
         settings.forward_model_settings,
-        10,
     )
     assert actual == objective
     assert len(constraints) == count
+    if isinstance(problem, problems.MHDStableQIStellarator):
+        assert constraints[0] == pytest.approx(metrics.aspect_ratio - 10)
     monkeypatch.setattr(
         ideal_mhd_parameters_utils, "design_to_ideal_mhd_parameters", to_inputs
     )
@@ -307,7 +311,6 @@ def test_boundary_only_runner(
         design=design,
         settings=settings,
         problem=problem,
-        aspect_ratio_upper_bound=10,
     )
     assert isinstance(recommended, problems.Design)
     assert recommended.pressure == pressure
@@ -338,7 +341,7 @@ def test_pressure_parameter_scaling(
     )
     observed = []
 
-    def evaluate(x, scale, problem, unravel, _settings, _aspect_bound):
+    def evaluate(x, scale, problem, unravel, _settings):
         observed.append((np.asarray(x), np.asarray(scale)))
         candidate = unravel(x * scale)
         assert candidate.pressure.axis_pressure == pytest.approx(1000)

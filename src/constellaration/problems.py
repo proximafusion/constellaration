@@ -1,4 +1,5 @@
 import abc
+from typing import ClassVar
 
 import jaxtyping as jt
 import numpy as np
@@ -115,11 +116,11 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
     """A simple geometrical problem.
 
     Feasibility constraints:
-        1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the boundary's
+        1. Aspect ratio <= aspect_ratio_upper_bound. It compares the boundary's
             “width” to its “height.”
         2. Average triangularity <= average_triangularity_upper_bound. Triangularity
-            measures how “D-shaped” the boundary is; negative values mean more indentation.
-        3. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+            measures how “D-shaped” the boundary is; negative means more indentation.
+        3. Edge rotational transform per field period is above the lower bound.
             Rotational transform describes the winding of magnetic field lines around
             the plasma edge per field period.
 
@@ -133,7 +134,7 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
         average_triangularity_upper_bound: Max allowed average triangularity.
         edge_rotational_transform_over_n_field_periods_lower_bound: Minimum
             required edge rotational transform per field period.
-    """  # noqa: E501
+    """
 
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 4.0
 
@@ -144,6 +145,23 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
     ) = 0.3
 
     _does_it_require_qi: bool = False
+
+    alm_constraint_count: ClassVar[int] = 3
+
+    def alm_objective_constraints(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, np.ndarray]:
+        """Return the minimization objective and signed residuals for AL."""
+        objective = np.array(metrics.max_elongation)
+        constraints = np.array(
+            [
+                metrics.aspect_ratio - self._aspect_ratio_upper_bound,
+                metrics.average_triangularity - self._average_triangularity_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
+            ]
+        )
+        return float(objective), constraints
 
     def get_objective(
         self, metrics: forward_model.ConstellarationMetrics
@@ -185,7 +203,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     Feasibility constraints:
         1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the
             boundary's “width” to its “height.”
-        2. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+        2. Edge rotational transform per field period is above the lower bound.
             Rotational transform describes the winding of magnetic field lines around
             the plasma edge per field period.
         3. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in
@@ -210,7 +228,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
         log10_qi_upper_bound: Max allowed log10 of the QI residual.
         edge_magnetic_mirror_ratio_upper_bound: Max allowed edge magnetic mirror ratio.
         max_elongation_upper_bound: Max allowed elongation.
-    """  # noqa: E501
+    """
 
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 10.0
 
@@ -225,6 +243,30 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     _max_elongation_upper_bound: pydantic.PositiveFloat = 5.0
 
     _does_it_require_qi: bool = True
+
+    alm_constraint_count: ClassVar[int] = 5
+
+    def alm_objective_constraints(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, np.ndarray]:
+        """Return the minimization objective and signed residuals for AL."""
+        objective = np.array(
+            20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
+        )
+        constraints = np.array(
+            [
+                metrics.aspect_ratio - self._aspect_ratio_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
+                np.log10(metrics.qi) - self._log10_qi_upper_bound
+                if metrics.qi is not None
+                else 1.0,
+                metrics.edge_magnetic_mirror_ratio
+                - self._edge_magnetic_mirror_ratio_upper_bound,
+                metrics.max_elongation - self._max_elongation_upper_bound,
+            ]
+        )
+        return float(objective), constraints
 
     def get_objective(
         self, metrics: forward_model.ConstellarationMetrics
@@ -528,6 +570,37 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
     _vacuum_well_lower_bound: pydantic.NonNegativeFloat = 0.0
 
     _does_it_require_qi: bool = True
+
+    aspect_ratio_upper_bound: pydantic.PositiveFloat = 12.0
+    """Aspect ratio cap for the single-objective AL formulation only."""
+
+    alm_constraint_count: ClassVar[int] = 6
+
+    def alm_objective_constraints(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float, np.ndarray]:
+        """Return the minimization objective and signed residuals for AL."""
+        objective = np.array(
+            20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
+        )
+        constraints = np.array(
+            [
+                metrics.aspect_ratio - self.aspect_ratio_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound
+                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
+                np.log10(metrics.qi) - self._log10_qi_upper_bound
+                if metrics.qi is not None
+                else 1.0,
+                metrics.edge_magnetic_mirror_ratio
+                - self._edge_magnetic_mirror_ratio_upper_bound,
+                metrics.flux_compression_in_regions_of_bad_curvature
+                - self._flux_compression_in_regions_of_bad_curvature_upper_bound
+                if metrics.flux_compression_in_regions_of_bad_curvature is not None
+                else 1.0,
+                100 * self._vacuum_well_lower_bound - 100 * metrics.vacuum_well,
+            ]
+        )
+        return float(objective), constraints
 
     def evaluate(
         self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]
