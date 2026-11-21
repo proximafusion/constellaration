@@ -116,11 +116,11 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
     """A simple geometrical problem.
 
     Feasibility constraints:
-        1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the boundary's
+        1. Aspect ratio <= aspect_ratio_upper_bound. It compares the boundary's
             “width” to its “height.”
         2. Average triangularity <= average_triangularity_upper_bound. Triangularity
-            measures how “D-shaped” the boundary is; negative values mean more indentation.
-        3. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+            measures how “D-shaped” the boundary is; negative means more indentation.
+        3. Edge rotational transform per field period is above the lower bound.
             Rotational transform describes the winding of magnetic field lines around
             the plasma edge per field period.
 
@@ -203,7 +203,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
     Feasibility constraints:
         1. Aspect ratio <= aspect_ratio_upper_bound. Aspect ratio compares the
             boundary's “width” to its “height.”
-        2. Edge rotational transform >= edge_rotational_transform_over_n_field_periods_lower_bound.
+        2. Edge rotational transform per field period is above the lower bound.
             Rotational transform describes the winding of magnetic field lines around
             the plasma edge per field period.
         3. log10(qi residual) <= log10_qi_upper_bound. QI ensures good properties in

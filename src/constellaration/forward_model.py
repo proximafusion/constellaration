@@ -117,6 +117,15 @@ def forward_model(
         vmec_settings=vmec_settings,
     )
 
+    return metrics_from_equilibrium(boundary, equilibrium, settings), equilibrium
+
+
+def metrics_from_equilibrium(
+    boundary: surface_rz_fourier.SurfaceRZFourier,
+    equilibrium: vmec_utils.VmecppWOut,
+    settings: ConstellarationSettings,
+) -> ConstellarationMetrics:
+    """Evaluate reporting metrics for an already solved equilibrium."""
     # Geometrical metrics
     (
         n_poloidal_points,
@@ -243,4 +252,4 @@ def forward_model(
         flux_compression_in_regions_of_bad_curvature=flux_compression_in_regions_of_bad_curvature,
     )
 
-    return metrics, equilibrium
+    return metrics

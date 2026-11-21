@@ -1,0 +1,18 @@
+{
+    "aspect_ratio": 9.647449389036193,
+    "aspect_ratio_over_edge_rotational_transform": 9.32976225514191,
+    "max_elongation": 6.757212858558924,
+    "axis_rotational_transform_over_n_field_periods": 0.22879796617727355,
+    "edge_rotational_transform_over_n_field_periods": 0.3446836452064716,
+    "axis_magnetic_mirror_ratio": 0.28154647395901633,
+    "edge_magnetic_mirror_ratio": 0.48485928629466357,
+    "average_triangularity": -0.518435301071571,
+    "vacuum_well": -0.22810590532987318,
+    "minimum_normalized_magnetic_gradient_scale_length": 6.075227329779512,
+    "minimum_normalized_mercier_criterion": -3167.0914717642027,
+    "magnetic_mirror_ratio_well": 0.5305618064988207,
+    "volume_averaged_beta": 1.050765845025461e-06,
+    "beta_peaking_factor": 1.8828487561388565,
+    "qi": 0.014691878013663593,
+    "flux_compression_in_regions_of_bad_curvature": 1.5209908395085072
+}

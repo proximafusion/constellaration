@@ -10,15 +10,9 @@ import pytest
 from constellaration import forward_model, initial_guess, problems
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import ideal_mhd_parameters_utils, pressure_profile
-from constellaration.optimization import (
-    augmented_lagrangian as al,
-)
-from constellaration.optimization import (
-    augmented_lagrangian_runner as runner,
-)
-from constellaration.optimization import (
-    settings as optimization_settings,
-)
+from constellaration.optimization import augmented_lagrangian as al
+from constellaration.optimization import augmented_lagrangian_runner as runner
+from constellaration.optimization import settings as optimization_settings
 
 
 @pytest.fixture
@@ -334,9 +328,10 @@ def test_pressure_parameter_scaling(
 ):
     assert settings.log_axis_pressure_scaling == 1.0
     assert settings.pressure_gradient_logits_scaling == 1.0
-    settings.log_axis_pressure_scaling, settings.pressure_gradient_logits_scaling = (
-        scales
-    )
+    (
+        settings.log_axis_pressure_scaling,
+        settings.pressure_gradient_logits_scaling,
+    ) = scales
     settings.optimizer_settings.maxit = 0
     design = problems.Design(
         boundary=boundary,

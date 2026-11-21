@@ -8,6 +8,8 @@ repos:
     -   id: end-of-file-fixer
     -   id: check-yaml
     -   id: check-added-large-files
+        # The three pinned VMEC regression fixtures contain full NetCDF wouts.
+        exclude: ^tests/equilibrium_references/(boundary_[12]|finite_beta)/wout\.nc$
     -   id: pretty-format-json
         args: ["--autofix", "--indent", "4", "--no-sort-keys"]
 -   repo: https://github.com/shellcheck-py/shellcheck-py

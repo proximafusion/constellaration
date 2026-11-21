@@ -1,0 +1,14 @@
+{
+    "pressure": {
+        "coefficients": [
+            1.0,
+            -1.0
+        ]
+    },
+    "toroidal_current": {
+        "coefficients": [
+            0.0
+        ]
+    },
+    "boundary_toroidal_flux": 0.035917645250728616
+}
