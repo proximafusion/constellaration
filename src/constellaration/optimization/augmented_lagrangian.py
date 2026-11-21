@@ -1,7 +1,10 @@
 import jax.numpy as jnp
 import pydantic
 
+from constellaration.utils import pytree
 
+
+@pytree.register_pydantic_data
 class AugmentedLagrangianState(pydantic.BaseModel, arbitrary_types_allowed=True):
     x: jnp.ndarray
     multipliers: jnp.ndarray

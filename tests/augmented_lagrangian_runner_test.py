@@ -341,9 +341,10 @@ def test_pressure_parameter_scaling(
     )
     observed = []
 
-    def evaluate(x, scale, problem, unravel, _settings):
+    def evaluate(x, scale, problem, unravel_and_unmask_fn, settings):
+        assert settings is not None
         observed.append((np.asarray(x), np.asarray(scale)))
-        candidate = unravel(x * scale)
+        candidate = unravel_and_unmask_fn(x * scale)
         assert candidate.pressure.axis_pressure == pytest.approx(1000)
         assert candidate.pressure.gradient_logits == pytest.approx(logits)
         return ((jnp.array(0.0), jnp.zeros(problem.n_constraints)), metrics)

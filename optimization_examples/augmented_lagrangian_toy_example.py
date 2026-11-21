@@ -29,6 +29,7 @@ def objective_constraints(x: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
 def run(x0: jnp.ndarray, settings: settings_module.AugmentedLagrangianMethodSettings):
     objective, constraints = objective_constraints(x0)
 
+    assert isinstance(settings.oracle_settings, settings_module.NevergradSettings)
     budget = settings.oracle_settings.budget_initial
 
     state = al.AugmentedLagrangianState(
