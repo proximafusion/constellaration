@@ -1,3 +1,5 @@
+import json
+
 import jax
 import numpy as np
 import pytest
@@ -5,8 +7,14 @@ import vmecpp
 
 from constellaration import initial_guess
 from constellaration.geometry import surface_rz_fourier
-from constellaration.mhd import geometry_utils
-from tests.equilibrium_reference_test import NAMES, reference_inputs
+from constellaration.mhd import geometry_utils, vmec_utils
+from tests.equilibrium_reference_test import NAMES, REFERENCES, reference_inputs
+from tests.utils.vmec_utils_test import (
+    assert_directional_derivative,
+    grid,
+    pinned_case,
+    resolved_case,
+)
 
 
 def test_surface_zero_triangularity() -> None:
@@ -52,3 +60,37 @@ def test_boundary_geometry_gradients(name):
                     rtol=1e-3,
                     atol=2e-7,
                 )
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_elongation_value(name):
+    with vmecpp.enable_x64(True):
+        wout = vmec_utils.VmecppWOut.model_construct(**pinned_case(name)[2])
+        theta, _ = grid(wout.mpol, wout.ntor, wout.nfp)
+        actual = geometry_utils.max_elongation(wout, *theta.shape)
+    expected = json.loads((REFERENCES / name / "metrics.json").read_text())
+    # Continuous perimeter and area quadrature replaces the legacy polygon.
+    np.testing.assert_allclose(actual, expected["max_elongation"], rtol=0.045)
+    np.testing.assert_allclose(
+        actual,
+        {"boundary_1": 6.76411628, "boundary_2": 6.71931483, "finite_beta": 2.86350131}[
+            name
+        ],
+        rtol=1e-7,
+    )
+
+
+def test_elongation_gradient():
+    with resolved_case() as (template, family, modes):
+        theta, _ = grid(template.mpol, template.ntor, template.nfp)
+
+        def metric(t):
+            _, out = family(t)
+            return geometry_utils.max_elongation(
+                vmec_utils.VmecppWOut.model_construct(
+                    _fields_set=None, **out, **modes, nfp=template.nfp, lasym=False
+                ),
+                *theta.shape,
+            )
+
+        assert_directional_derivative(metric)
