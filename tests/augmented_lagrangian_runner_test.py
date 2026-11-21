@@ -223,6 +223,7 @@ def test_joint_decoder_is_picklable(boundary):
             axis_pressure=np.log(1000), gradient_logits=(1, 2)
         ),
     )
+    assert design.pressure is not None
     mask = problems.Design.model_construct(
         boundary=surface_rz_fourier.build_mask(boundary, 1, 1).model_copy(
             update={"r_sin": None, "z_cos": None}
@@ -354,6 +355,7 @@ def test_pressure_parameter_scaling(
         design, settings, problems.MaximumBetaQIStellarator()
     )
     assert result_metrics == metrics
+    assert recommended.pressure is not None
     assert recommended.pressure.axis_pressure == pytest.approx(1000)
     x, scale = observed[0]
     count = 1 + len(logits)
