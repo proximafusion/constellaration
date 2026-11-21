@@ -1,8 +1,18 @@
+import json
+
+import jax.numpy as jnp
 import numpy as np
 import pytest
+import vmecpp
 
 from constellaration import forward_model, initial_guess
 from constellaration.mhd import ideal_mhd_parameters, magnetics_utils, vmec_utils
+from tests.equilibrium_reference_test import NAMES, REFERENCES
+from tests.utils.vmec_utils_test import (
+    assert_directional_derivative,
+    pinned_case,
+    resolved_case,
+)
 
 
 def test_mercier_softmin():
@@ -18,9 +28,9 @@ def test_mercier_softmin():
     assert value is not None
     assert value < 0
     equilibrium.DMerc[1] = np.nan
-    assert (
-        magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 1e-3) is None
-    )
+    value = magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 1e-3)
+    assert value is not None
+    assert np.isnan(float(value))
     with pytest.raises(ValueError, match="temperature"):
         magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 0)
 
@@ -33,7 +43,9 @@ def test_mirror_and_beta():
     )
     assert magnetics_utils.beta_peaking_factor(equilibrium) == pytest.approx(10 / 3)
     equilibrium.betatotal = 0
-    assert magnetics_utils.beta_peaking_factor(equilibrium) is None
+    peaking = magnetics_utils.beta_peaking_factor(equilibrium)
+    assert peaking is not None
+    assert np.isnan(float(peaking))
     equilibrium.betatotal = 0.03
     equilibrium.beta_vol = np.array([0.0, 0.09])
     assert magnetics_utils.beta_peaking_factor(equilibrium) is None
@@ -63,3 +75,60 @@ def test_metrics_from_real_vmec():
     value = metrics.minimum_normalized_mercier_criterion
     assert value is not None
     assert value <= np.min(interior)
+
+
+def _magnetic_values(equilibrium):
+    mirror = magnetics_utils.magnetic_mirror_ratio(equilibrium).values
+    axis, edge = mirror[0], mirror[-1]
+    mercier = magnetics_utils.minimum_normalized_mercier_criterion(equilibrium, 1e-3)
+    assert mercier is not None
+    return jnp.stack(
+        (
+            axis,
+            edge,
+            magnetics_utils.vacuum_well(equilibrium),
+            mercier,
+        )
+    )
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_magnetic_values(name):
+    with vmecpp.enable_x64(True):
+        equilibrium = vmec_utils.VmecppWOut.model_construct(**pinned_case(name)[2])
+        actual = _magnetic_values(equilibrium)
+    expected = json.loads((REFERENCES / name / "metrics.json").read_text())
+    np.testing.assert_allclose(
+        actual,
+        [
+            expected[key]
+            for key in (
+                "axis_magnetic_mirror_ratio",
+                "edge_magnetic_mirror_ratio",
+                "vacuum_well",
+                "minimum_normalized_mercier_criterion",
+            )
+        ],
+        rtol=1e-10,
+        atol=1e-11,
+    )
+
+
+def test_magnetic_gradients():
+    with resolved_case() as (template, family, modes):
+
+        def metric(t):
+            _, out = family(t)
+            return _magnetic_values(
+                vmec_utils.VmecppWOut.model_construct(
+                    _fields_set=None,
+                    **out,
+                    **modes,
+                    nfp=template.nfp,
+                    lasym=False,
+                    mpol=template.mpol,
+                    ntor=template.ntor,
+                )
+            )
+
+        assert_directional_derivative(metric)
