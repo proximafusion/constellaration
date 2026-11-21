@@ -300,6 +300,9 @@ class _FiniteBetaQIStellarator(SimpleToBuildQIStellarator):
         )
         if any(value is None or not np.isfinite(value) for value in required):
             return None
+        assert metrics.qi is not None
+        assert metrics.minimum_normalized_mercier_criterion is not None
+        assert metrics.magnetic_mirror_ratio_well is not None
         if metrics.qi < 0:
             return None
 
