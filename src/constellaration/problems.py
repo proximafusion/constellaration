@@ -1,14 +1,18 @@
 import abc
 from typing import ClassVar
 
+import jax
+import jax.numpy as jnp
 import jaxtyping as jt
 import numpy as np
 import pydantic
+from pydantic import PositiveFloat
 from pymoo.indicators import hv
 
 from constellaration import forward_model
 from constellaration.geometry import surface_rz_fourier
 from constellaration.mhd import ideal_mhd_parameters_utils, pressure_profile
+from constellaration.utils import pytree
 
 _DEFAULT_RELATIVE_TOLERANCE = 1e-2
 
@@ -140,9 +144,7 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
 
     _average_triangularity_upper_bound: float = -0.5
 
-    _edge_rotational_transform_over_n_field_periods_lower_bound: (
-        pydantic.PositiveFloat
-    ) = 0.3
+    _edge_rotational_transform_over_n_field_periods_lower_bound: PositiveFloat = 0.3
 
     _does_it_require_qi: bool = False
 
@@ -150,18 +152,18 @@ class GeometricalProblem(SingleObjectiveProblem, pydantic.BaseModel):
 
     def alm_objective_constraints(
         self, metrics: forward_model.ConstellarationMetrics
-    ) -> tuple[float, np.ndarray]:
+    ) -> tuple[float | jax.Array, jax.Array]:
         """Return the minimization objective and signed residuals for AL."""
-        objective = np.array(metrics.max_elongation)
-        constraints = np.array(
+        objective = metrics.max_elongation
+        constraints = jnp.array(
             [
                 metrics.aspect_ratio - self._aspect_ratio_upper_bound,
                 metrics.average_triangularity - self._average_triangularity_upper_bound,
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
+                - jnp.abs(metrics.edge_rotational_transform_over_n_field_periods),
             ]
         )
-        return float(objective), constraints
+        return objective, constraints
 
     def get_objective(
         self, metrics: forward_model.ConstellarationMetrics
@@ -232,9 +234,7 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
 
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 10.0
 
-    _edge_rotational_transform_over_n_field_periods_lower_bound: (
-        pydantic.PositiveFloat
-    ) = 0.25
+    _edge_rotational_transform_over_n_field_periods_lower_bound: PositiveFloat = 0.25
 
     _log10_qi_upper_bound: pydantic.NegativeFloat = -4.0
 
@@ -248,25 +248,41 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
 
     def alm_objective_constraints(
         self, metrics: forward_model.ConstellarationMetrics
-    ) -> tuple[float, np.ndarray]:
+    ) -> tuple[float | jax.Array, jax.Array]:
         """Return the minimization objective and signed residuals for AL."""
-        objective = np.array(
-            20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
+        return (
+            20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length,
+            self._qi_constraints(metrics, jnp),
         )
-        constraints = np.array(
+
+    def _qi_constraints(self, metrics: forward_model.ConstellarationMetrics, xp):
+        q = metrics.qi
+        return xp.stack(
             [
                 metrics.aspect_ratio - self._aspect_ratio_upper_bound,
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
-                np.log10(metrics.qi) - self._log10_qi_upper_bound
-                if metrics.qi is not None
+                - xp.abs(metrics.edge_rotational_transform_over_n_field_periods),
+                xp.log10(xp.maximum(q, xp.finfo(xp.asarray(q, dtype=float).dtype).tiny))
+                - self._log10_qi_upper_bound
+                if q is not None
                 else 1.0,
                 metrics.edge_magnetic_mirror_ratio
                 - self._edge_magnetic_mirror_ratio_upper_bound,
                 metrics.max_elongation - self._max_elongation_upper_bound,
             ]
         )
-        return float(objective), constraints
+
+    def _normalized_qi_constraints(self, metrics, xp):
+        scales = xp.array(
+            [
+                self._aspect_ratio_upper_bound,
+                self._edge_rotational_transform_over_n_field_periods_lower_bound,
+                -self._log10_qi_upper_bound,
+                self._edge_magnetic_mirror_ratio_upper_bound,
+                self._max_elongation_upper_bound,
+            ]
+        )
+        return self._qi_constraints(metrics, xp) / scales
 
     def get_objective(
         self, metrics: forward_model.ConstellarationMetrics
@@ -284,29 +300,10 @@ class SimpleToBuildQIStellarator(SingleObjectiveProblem, pydantic.BaseModel):
         self, metrics: forward_model.ConstellarationMetrics
     ) -> np.ndarray:
         assert metrics.qi is not None
-        constraint_violations = np.array(
-            [
-                metrics.aspect_ratio - self._aspect_ratio_upper_bound,
-                self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
-                np.log10(metrics.qi) - self._log10_qi_upper_bound,
-                metrics.edge_magnetic_mirror_ratio
-                - self._edge_magnetic_mirror_ratio_upper_bound,
-                metrics.max_elongation - self._max_elongation_upper_bound,
-            ]
-        )
-        constraint_targets = np.array(
-            [
-                self._aspect_ratio_upper_bound,
-                self._edge_rotational_transform_over_n_field_periods_lower_bound,
-                self._log10_qi_upper_bound,
-                self._edge_magnetic_mirror_ratio_upper_bound,
-                self._max_elongation_upper_bound,
-            ]
-        )
-        return constraint_violations / np.abs(constraint_targets)
+        return self._normalized_qi_constraints(metrics, np)
 
 
+@pytree.register_pydantic_data
 class Design(pydantic.BaseModel):
     """Boundary and optional pressure profile for equilibrium optimization.
 
@@ -326,9 +323,7 @@ class _FiniteBetaQIStellarator(SimpleToBuildQIStellarator):
 
     _max_elongation_upper_bound: pydantic.PositiveFloat = 7.0
     _magnetic_mirror_ratio_well_upper_bound: pydantic.PositiveFloat = 0.05
-    _edge_rotational_transform_over_n_field_periods_lower_bound: (
-        pydantic.PositiveFloat
-    ) = 0.225
+    _edge_rotational_transform_over_n_field_periods_lower_bound: PositiveFloat = 0.225
 
     def _common_constraint_violations(
         self, metrics: forward_model.ConstellarationMetrics
@@ -348,9 +343,10 @@ class _FiniteBetaQIStellarator(SimpleToBuildQIStellarator):
         if metrics.qi < 0:
             return None
 
-        # log10(0) represents perfect QI, but keep optimizer outputs finite.
-        legacy_metrics = metrics.model_copy(update={"qi": max(metrics.qi, 1e-300)})
-        legacy = super()._normalized_constraint_violations(legacy_metrics)
+        return self._finite_beta_constraints(metrics, np)
+
+    def _finite_beta_constraints(self, metrics, xp):
+        legacy = self._normalized_qi_constraints(metrics, xp)
         mercier = -metrics.minimum_normalized_mercier_criterion / 1e-3
         mirror_well = (
             metrics.magnetic_mirror_ratio_well
@@ -412,9 +408,19 @@ class MaximumBetaQIStellarator(_FiniteBetaQIStellarator):
 
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 12.0
 
+    alm_constraint_count: ClassVar[int] = 7
+
     @property
     def n_constraints(self) -> int:
-        return 7
+        return self.alm_constraint_count
+
+    def alm_objective_constraints(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float | jax.Array, jax.Array]:
+        beta = metrics.volume_averaged_beta
+        assert beta is not None
+        legacy, mercier, mirror_well = self._finite_beta_constraints(metrics, jnp)
+        return -beta, jnp.concatenate((legacy, jnp.stack((mercier, mirror_well))))
 
     def _normalized_constraint_violations(
         self, metrics: forward_model.ConstellarationMetrics
@@ -484,9 +490,20 @@ class SimpleToBuildFiniteBetaQIStellarator(_FiniteBetaQIStellarator):
 
     _aspect_ratio_upper_bound: pydantic.PositiveFloat = 5.0
 
+    alm_constraint_count: ClassVar[int] = 10
+
     @property
     def n_constraints(self) -> int:
-        return 10
+        return self.alm_constraint_count
+
+    def alm_objective_constraints(
+        self, metrics: forward_model.ConstellarationMetrics
+    ) -> tuple[float | jax.Array, jax.Array]:
+        residuals = self._finite_beta_constraints(metrics, jnp)
+        return (
+            -metrics.minimum_normalized_magnetic_gradient_scale_length,
+            self._append_beta_constraints(residuals, metrics, jnp),
+        )
 
     def _normalized_constraint_violations(
         self, metrics: forward_model.ConstellarationMetrics
@@ -495,22 +512,29 @@ class SimpleToBuildFiniteBetaQIStellarator(_FiniteBetaQIStellarator):
         peaking = metrics.beta_peaking_factor
         if common is None or peaking is None or not np.isfinite(peaking):
             return np.full(self.n_constraints, np.inf)
+        violations = self._append_beta_constraints(common, metrics, np)
+        return np.where(np.isfinite(violations), violations, np.inf)
+
+    @staticmethod
+    def _append_beta_constraints(common, metrics, xp):
         legacy, mercier, mirror_well = common
-        beta = metrics.volume_averaged_beta
+        beta, peaking = metrics.volume_averaged_beta, metrics.beta_peaking_factor
         assert beta is not None
-        violations = np.concatenate(
+        assert peaking is not None
+        return xp.concatenate(
             (
                 legacy,
-                [
-                    mercier,
-                    mirror_well,
-                    (0.03 - beta) / 0.03,
-                    (2.9 - peaking) / 3.0,
-                    (peaking - 3.1) / 3.0,
-                ],
+                xp.stack(
+                    (
+                        mercier,
+                        mirror_well,
+                        (0.03 - beta) / 0.03,
+                        (2.9 - peaking) / 3.0,
+                        (peaking - 3.1) / 3.0,
+                    )
+                ),
             )
         )
-        return np.where(np.isfinite(violations), violations, np.inf)
 
     def is_feasible(self, metrics: forward_model.ConstellarationMetrics) -> bool:
         violations = self._normalized_constraint_violations(metrics)
@@ -555,17 +579,13 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
         vacuum_well_lower_bound: Minimum required vacuum well.
     """
 
-    _edge_rotational_transform_over_n_field_periods_lower_bound: (
-        pydantic.PositiveFloat
-    ) = 0.25
+    _edge_rotational_transform_over_n_field_periods_lower_bound: PositiveFloat = 0.25
 
     _log10_qi_upper_bound: pydantic.NegativeFloat = -3.5
 
     _edge_magnetic_mirror_ratio_upper_bound: pydantic.PositiveFloat = 0.25
 
-    _flux_compression_in_regions_of_bad_curvature_upper_bound: (
-        pydantic.PositiveFloat
-    ) = 0.9
+    _flux_compression_in_regions_of_bad_curvature_upper_bound: PositiveFloat = 0.9
 
     _vacuum_well_lower_bound: pydantic.NonNegativeFloat = 0.0
 
@@ -578,17 +598,21 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
 
     def alm_objective_constraints(
         self, metrics: forward_model.ConstellarationMetrics
-    ) -> tuple[float, np.ndarray]:
+    ) -> tuple[float | jax.Array, jax.Array]:
         """Return the minimization objective and signed residuals for AL."""
-        objective = np.array(
-            20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
-        )
-        constraints = np.array(
+        objective = 20.0 - metrics.minimum_normalized_magnetic_gradient_scale_length
+        constraints = jnp.array(
             [
                 metrics.aspect_ratio - self.aspect_ratio_upper_bound,
                 self._edge_rotational_transform_over_n_field_periods_lower_bound
-                - np.abs(metrics.edge_rotational_transform_over_n_field_periods),
-                np.log10(metrics.qi) - self._log10_qi_upper_bound
+                - jnp.abs(metrics.edge_rotational_transform_over_n_field_periods),
+                jnp.log10(
+                    jnp.maximum(
+                        metrics.qi,
+                        jnp.finfo(jnp.asarray(metrics.qi, dtype=float).dtype).tiny,
+                    )
+                )
+                - self._log10_qi_upper_bound
                 if metrics.qi is not None
                 else 1.0,
                 metrics.edge_magnetic_mirror_ratio
@@ -600,7 +624,7 @@ class MHDStableQIStellarator(MultiObjectiveProblem, pydantic.BaseModel):
                 100 * self._vacuum_well_lower_bound - 100 * metrics.vacuum_well,
             ]
         )
-        return float(objective), constraints
+        return objective, constraints
 
     def evaluate(
         self, boundaries: list[surface_rz_fourier.SurfaceRZFourier]

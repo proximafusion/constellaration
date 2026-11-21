@@ -6,8 +6,10 @@ import numpy as np
 import pydantic
 
 from constellaration.mhd import flux_power_series
+from constellaration.utils import pytree
 
 
+@pytree.register_pydantic_data
 class IntegratedBernsteinProfile(pydantic.BaseModel):
     r"""A profile with a normalized Bernstein gradient in :math:`s=\rho^2`.
 
@@ -36,6 +38,23 @@ class IntegratedBernsteinProfile(pydantic.BaseModel):
     """
 
 
+def power_series_basis(degree: int) -> np.ndarray:
+    """Columns map normalized Bernstein weights to pressure power coefficients."""
+    basis = np.zeros((degree + 2, degree + 1))
+    basis[0] = 1
+    for k in range(degree + 1):
+        for j in range(degree - k + 1):
+            i = k + j + 1
+            basis[i, k] = (
+                -(degree + 1)
+                * math.comb(degree, k)
+                * math.comb(degree - k, j)
+                * (-1) ** j
+                / i
+            )
+    return basis
+
+
 def to_power_series(
     profile: IntegratedBernsteinProfile,
 ) -> flux_power_series.FluxPowerSeriesProfile:
@@ -43,18 +62,9 @@ def to_power_series(
     logits = np.array([*profile.gradient_logits, 0.0])
     weights = np.exp(logits - np.max(logits))
     weights /= np.sum(weights)
-    degree = len(profile.gradient_logits)
-    gradient = np.zeros(degree + 1)
-    for k, weight in enumerate(weights):
-        for j in range(degree - k + 1):
-            gradient[k + j] += (
-                (degree + 1)
-                * weight
-                * math.comb(degree, k)
-                * math.comb(degree - k, j)
-                * (-1) ** j
-            )
-    coefficients = [profile.axis_pressure] + [
-        -profile.axis_pressure * c / (i + 1) for i, c in enumerate(gradient)
-    ]
-    return flux_power_series.FluxPowerSeriesProfile(coefficients=coefficients)
+    coefficients = profile.axis_pressure * (
+        power_series_basis(len(logits) - 1) @ weights
+    )
+    # The axis value is exactly the specified pressure.
+    coefficients[0] = profile.axis_pressure
+    return flux_power_series.FluxPowerSeriesProfile(coefficients=coefficients.tolist())

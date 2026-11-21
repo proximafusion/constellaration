@@ -5,6 +5,7 @@ from typing import Any, Callable, TypeVar
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 import pydantic
 
 from constellaration.utils.types import NpOrJaxArray
@@ -81,9 +82,12 @@ def pydantic_unflatten(
 
 
 _REGISTERED_META_FIELDS: dict[type, tuple[str, ...]] = {}
+_ModelClass = TypeVar("_ModelClass", bound=type)
 
 
-def register_pydantic_data(cls: type, meta_fields: list[str] | None = None) -> type:
+def register_pydantic_data(
+    cls: _ModelClass, meta_fields: list[str] | None = None
+) -> _ModelClass:
     """Register a pydantic.BaseModel class for jax pytree compatibility.
 
     Repeated registration with the same metadata is safe across importing modules.
@@ -121,12 +125,8 @@ LeafT = TypeVar("LeafT")
 @dataclasses.dataclass
 class _LeafInfo:
     leaf: NpOrJaxArray | float
-    mask: NpOrJaxArray | None
+    indices: tuple[np.ndarray, ...] | None
     is_scalar: bool
-
-    @property
-    def is_masked(self) -> bool:
-        return self.mask is not None
 
 
 class _UnravelFn:
@@ -151,20 +151,15 @@ class _UnravelFn:
         new_leaves: list[NpOrJaxArray | float] = []
         pos = 0
         for leaf_info in self._leaves_info:
-            if leaf_info.is_masked:
-                assert leaf_info.mask is not None
-                # Determine how many entries were extracted for this leaf.
-                n_true = int(leaf_info.mask.sum())
+            idx = leaf_info.indices
+            if idx is not None:
+                n_true = idx[0].size
                 segment = flat[pos : pos + n_true]
                 pos += n_true
-                # Find the indices where the mask is True.
-                idx = jnp.nonzero(leaf_info.mask)
                 if leaf_info.is_scalar:
-                    # If the leaf is a scalar, `segment` has a single entry.
-                    new_leaf = segment[0].item()
+                    new_leaf = segment[0]
                 else:
                     assert isinstance(leaf_info.leaf, NpOrJaxArray)
-                    # Replace the masked positions with the new parameters.
                     new_leaf = jnp.asarray(leaf_info.leaf).at[idx].set(segment)
                 new_leaves.append(new_leaf)
             else:
@@ -203,7 +198,8 @@ def mask_and_ravel(
         if isinstance(leaf_mask, NpOrJaxArray) and leaf_mask.dtype == jnp.bool_:
             selected = leaf[leaf_mask]
             flat_segments.append(jnp.atleast_1d(selected.ravel()))
-            leaves_info.append(_LeafInfo(mask=leaf_mask, leaf=leaf, is_scalar=False))
+            indices = np.nonzero(np.asarray(leaf_mask))
+            leaves_info.append(_LeafInfo(indices=indices, leaf=leaf, is_scalar=False))
         elif isinstance(leaf_mask, float):
             if leaf_mask not in (0.0, 1.0):
                 raise ValueError("Only 0.0 and 1.0 are supported as float masks.")
@@ -211,10 +207,12 @@ def mask_and_ravel(
             if leaf_mask == 1.0:
                 flat_segments.append(jnp.atleast_1d(leaf))
                 leaves_info.append(
-                    _LeafInfo(mask=jnp.array([True]), leaf=leaf, is_scalar=is_scalar)
+                    _LeafInfo(indices=(np.array([0]),), leaf=leaf, is_scalar=is_scalar)
                 )
             else:
-                leaves_info.append(_LeafInfo(leaf=leaf, mask=None, is_scalar=is_scalar))
+                leaves_info.append(
+                    _LeafInfo(leaf=leaf, indices=None, is_scalar=is_scalar)
+                )
         else:
             raise ValueError(
                 f"Unsupported mask type {type(leaf_mask)} for leaf {leaf}."
