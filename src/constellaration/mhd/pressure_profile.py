@@ -2,12 +2,17 @@
 
 import math
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pydantic
+from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
 
 from constellaration.mhd import flux_power_series
+from constellaration.utils import pytree
 
 
+@pytree.register_pydantic_data
 class IntegratedBernsteinProfile(pydantic.BaseModel):
     r"""A profile with a normalized Bernstein gradient in :math:`s=\rho^2`.
 
@@ -19,6 +24,7 @@ class IntegratedBernsteinProfile(pydantic.BaseModel):
         q(s) = (n+1)\sum_{k=0}^{n} w_k B_{k,n}(s), \qquad
         p(s) = p_0\int_s^1 q(t)\,dt.
 
+    Axis pressure and the free logits are differentiable JAX PyTree leaves.
     The final logit is fixed to zero to remove the softmax's redundant degree
     of freedom. Since :math:`q\geq0` and integrates to one, :math:`p(0)=p_0`,
     :math:`p(1)=0`, and :math:`dp/d\rho=0` at the axis.
@@ -36,25 +42,37 @@ class IntegratedBernsteinProfile(pydantic.BaseModel):
     """
 
 
-def to_power_series(
-    profile: IntegratedBernsteinProfile,
-) -> flux_power_series.FluxPowerSeriesProfile:
-    """Convert the analytically integrated profile to powers of normalized flux."""
-    logits = np.array([*profile.gradient_logits, 0.0])
-    weights = np.exp(logits - np.max(logits))
-    weights /= np.sum(weights)
-    degree = len(profile.gradient_logits)
-    gradient = np.zeros(degree + 1)
-    for k, weight in enumerate(weights):
+def power_series_basis(degree: int) -> np.ndarray:
+    """Columns map normalized Bernstein weights to pressure power coefficients."""
+    basis = np.zeros((degree + 2, degree + 1))
+    basis[0] = 1
+    for k in range(degree + 1):
         for j in range(degree - k + 1):
-            gradient[k + j] += (
-                (degree + 1)
-                * weight
+            i = k + j + 1
+            basis[i, k] = (
+                -(degree + 1)
                 * math.comb(degree, k)
                 * math.comb(degree - k, j)
                 * (-1) ** j
+                / i
             )
-    coefficients = [profile.axis_pressure] + [
-        -profile.axis_pressure * c / (i + 1) for i, c in enumerate(gradient)
-    ]
+    return basis
+
+
+def power_series_coefficients(profile: IntegratedBernsteinProfile) -> jax.Array:
+    """JAX power-series coefficients in ascending powers of normalized flux."""
+    logits = jnp.stack((*profile.gradient_logits, 0.0))
+    weights = jax.nn.softmax(logits)
+    coefficients = profile.axis_pressure * (
+        jnp.asarray(power_series_basis(len(profile.gradient_logits))) @ weights
+    )
+    return coefficients.at[0].set(profile.axis_pressure)
+
+
+def to_power_series(
+    profile: IntegratedBernsteinProfile,
+) -> flux_power_series.FluxPowerSeriesProfile:
+    """Convert a concrete profile to serializable VMEC pressure coefficients."""
+    with enable_x64(True):
+        coefficients = power_series_coefficients(profile).tolist()
     return flux_power_series.FluxPowerSeriesProfile(coefficients=coefficients)

@@ -1,3 +1,4 @@
+import jax.numpy as jnp
 import numpy as np
 import pydantic
 from vmecpp import enable_x64  # pyright: ignore[reportAttributeAccessIssue]
@@ -10,8 +11,10 @@ from constellaration.mhd import magnetics_utils, turbulent_transport
 from constellaration.mhd import vmec_settings as vmec_settings_module
 from constellaration.mhd import vmec_utils
 from constellaration.omnigeneity import qi
+from constellaration.utils import pytree
 
 
+@pytree.register_pydantic_data
 class ConstellarationMetrics(pydantic.BaseModel):
     aspect_ratio: float
 
@@ -52,6 +55,9 @@ class ConstellarationSettings(pydantic.BaseModel):
             fidelity="low_fidelity",
         )
     )
+    vmec_settings: vmec_settings_module.VmecSettings | None = None
+    """Explicit resolution override; when set, the VMEC preset is ignored."""
+
     boozer_preset_settings: boozer_module.BoozerPresetSettings | None = (
         boozer_module.BoozerPresetSettings(
             normalized_toroidal_flux=[1.0],
@@ -108,9 +114,11 @@ def forward_model(
         )
     if settings is None:
         settings = ConstellarationSettings()
-    vmec_settings = vmec_settings_module.create_vmec_settings_from_preset(
-        boundary,
-        settings=settings.vmec_preset_settings,
+    vmec_settings = settings.vmec_settings or (
+        vmec_settings_module.create_vmec_settings_from_preset(
+            boundary,
+            settings=settings.vmec_preset_settings,
+        )
     )
     equilibrium = vmec_utils.run_vmec(
         boundary=boundary,
@@ -127,12 +135,19 @@ def metrics_from_equilibrium(
 ) -> ConstellarationMetrics:
     """Evaluate reporting metrics for an already solved equilibrium."""
     with enable_x64(True):
-        return _metrics_from_equilibrium(equilibrium, settings)
+        transform = _prepare_boozer_transform(equilibrium, settings)
+        metrics = _metrics_from_equilibrium(equilibrium, settings, transform)
+        return ConstellarationMetrics.model_validate(
+            {name: None if value is None else float(value) for name, value in metrics}
+        )
 
 
 def _metrics_from_equilibrium(
-    equilibrium: vmec_utils.VmecppWOut, settings: ConstellarationSettings
+    equilibrium: vmec_utils.VmecppWOut,
+    settings: ConstellarationSettings,
+    transform,
 ) -> ConstellarationMetrics:
+    """Shared metric evaluation for concrete and traced VMEC outputs."""
     # Geometrical metrics
     (
         n_poloidal_points,
@@ -174,7 +189,7 @@ def _metrics_from_equilibrium(
     # We normalize by the number of field periods to make the metric independent of
     # the configuration number of field periods.
     minimum_normalized_magnetic_gradient_scale_length = (
-        np.min(
+        jnp.min(
             magnetics_utils.normalized_magnetic_gradient_scale_length(
                 equilibrium, theta_phi
             )
@@ -184,10 +199,8 @@ def _metrics_from_equilibrium(
 
     # QI only needs the magnetic spectrum on the selected half-grid surfaces.
     qi_residuals = None
-    if settings.qi_settings is not None and settings.boozer_preset_settings is not None:
-        transform = _prepare_boozer_transform(
-            equilibrium, settings.boozer_preset_settings
-        )
+    if transform is not None:
+        assert settings.qi_settings is not None
         spectrum, _ = transform(_boozer_fields(equilibrium))
         qi_residuals = qi.quasi_isodynamicity_residual(
             spectrum,
@@ -206,17 +219,17 @@ def _metrics_from_equilibrium(
     else:
         flux_compression_in_regions_of_bad_curvature = None
 
-    metrics = ConstellarationMetrics(
+    metrics = ConstellarationMetrics.model_construct(
         minimum_normalized_mercier_criterion=magnetics_utils.minimum_normalized_mercier_criterion(
             equilibrium, settings.mercier_softmin_temperature
         ),
         magnetic_mirror_ratio_well=magnetics_utils.mirror_ratio_well(
             axis_magnetic_mirror_ratio, edge_magnetic_mirror_ratio
         ),
-        volume_averaged_beta=float(equilibrium.betatotal),
+        volume_averaged_beta=equilibrium.betatotal,
         beta_peaking_factor=magnetics_utils.beta_peaking_factor(equilibrium),
-        aspect_ratio=float(equilibrium.aspect),
-        aspect_ratio_over_edge_rotational_transform=float(equilibrium.aspect)
+        aspect_ratio=equilibrium.aspect,
+        aspect_ratio_over_edge_rotational_transform=equilibrium.aspect
         / edge_rotational_transform,
         max_elongation=max_elongation,
         edge_rotational_transform_over_n_field_periods=edge_rotational_transform
@@ -235,14 +248,19 @@ def _metrics_from_equilibrium(
     return metrics
 
 
-def _prepare_boozer_transform(equilibrium, settings):
+def _prepare_boozer_transform(
+    equilibrium: vmec_utils.VmecppWOut, settings: ConstellarationSettings
+):
+    preset = settings.boozer_preset_settings
+    if preset is None or settings.qi_settings is None:
+        return None
     return boozer_module.make_transform(
         {key: getattr(equilibrium, key) for key in ("xm", "xn", "xm_nyq", "xn_nyq")},
         nfp=equilibrium.nfp,
         ns=equilibrium.ns,
         mboz=max(6 * equilibrium.mpol, 2),
         nboz=max(2 * equilibrium.ntor - 1, 0),
-        surfaces=settings.normalized_toroidal_flux,
+        surfaces=preset.normalized_toroidal_flux,
         magnetic_only=True,
     )
 
