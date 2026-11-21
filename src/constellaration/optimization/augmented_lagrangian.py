@@ -19,7 +19,7 @@ class AugmentedLagrangianSettings(pydantic.BaseModel):
     """Increment penalty parameter."""
 
     bounds_reduction_factor: float = 0.95
-    """Decrement trust region bounds."""
+    """Multiplicative reduction of trust-region bounds at each state update."""
 
     penalty_parameters_max: float = 1e8
     """Upper cutoff for penalty parameter."""
@@ -78,7 +78,9 @@ def update_augmented_lagrangian_state(
       settings: Settings for the augmented Lagrangian method.
       penalty_parameters: Optional custom penalty parameters. If None, they will be
         updated based on constraint violations.
-      bounds: Optional custom bounds. If None, they will be updated based on settings.
+      bounds: Optional custom bounds, used unchanged when supplied. Otherwise,
+        multiply the current bounds by bounds_reduction_factor and clamp each
+        entry to bounds_min.
 
     Returns:
       Updated augmented Lagrangian state.
@@ -101,7 +103,9 @@ def update_augmented_lagrangian_state(
         )
 
     if bounds is None:
-        bounds = jnp.maximum(settings.bounds_min, state.bounds)
+        bounds = jnp.maximum(
+            settings.bounds_min, state.bounds * settings.bounds_reduction_factor
+        )
 
     return AugmentedLagrangianState(
         x=x,
