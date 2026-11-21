@@ -203,9 +203,30 @@ def average_triangularity(
         surface=surface,
         theta_phi=theta_phi,
     )
-    R = RZ[..., 0]
-    Z = RZ[..., 1]
+    return _average_triangularity_from_sections(RZ[..., 0], RZ[..., 1])
 
+
+def equilibrium_average_triangularity(equilibrium: vmec_utils.VmecppWOut) -> float:
+    """Sample triangularity directly on the equilibrium's outermost flux surface."""
+    if equilibrium.lasym:
+        raise NotImplementedError("Non-stellarator symmetric surfaces not supported.")
+
+    theta_phi = surface_utils.make_theta_phi_grid(
+        n_theta=201,
+        n_phi=2,
+        phi_upper_bound=np.pi / equilibrium.nfp,
+        include_endpoints=True,
+    )
+    phase = (
+        theta_phi[..., 0, None] * equilibrium.xm
+        - theta_phi[..., 1, None] * equilibrium.xn
+    )
+    r = np.cos(phase) @ equilibrium.rmnc[:, -1]
+    z = np.sin(phase) @ equilibrium.zmns[:, -1]
+    return _average_triangularity_from_sections(r, z)
+
+
+def _average_triangularity_from_sections(R: np.ndarray, Z: np.ndarray) -> float:
     # Approximate the magnetic axis with the surface centroid.
     R0 = np.mean(R, axis=0)
 

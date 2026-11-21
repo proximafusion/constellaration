@@ -1,0 +1,2 @@
+tests/metrics_references/*/wout.nc filter=lfs diff=lfs merge=lfs -text
+tests/metrics_references/*/boozer.npz filter=lfs diff=lfs merge=lfs -text

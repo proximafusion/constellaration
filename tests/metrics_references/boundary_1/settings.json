@@ -1,0 +1,27 @@
+{
+    "mercier_softmin_temperature": 0.001,
+    "vmec_preset_settings": {
+        "fidelity": "from_boundary_resolution",
+        "verbose": false,
+        "multithreaded": false
+    },
+    "boozer_preset_settings": {
+        "normalized_toroidal_flux": [
+            1.0
+        ],
+        "verbose": false
+    },
+    "qi_settings": {
+        "n_field_lines": 75,
+        "n_toroidal_points": 601,
+        "n_field_contours": 401,
+        "n_output_toroidal_points": 2000
+    },
+    "turbulent_settings": {
+        "normalized_toroidal_flux": [
+            0.48999999999999994
+        ],
+        "n_field_lines": 101,
+        "n_toroidal_points": 64
+    }
+}
